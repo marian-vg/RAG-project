@@ -1,0 +1,3 @@
+.\venv\Scripts\python.exe -m src.ingest "CARGAR DOCUMENTOS"
+
+.\venv\Scripts\python.exe run.py "EJECUTAR RAG"
