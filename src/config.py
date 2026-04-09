@@ -11,5 +11,5 @@ class FarmaConfig(BaseModel):
     generation_model: str = "models/gemini-3.1-flash-lite-preview"
     temperature: float = 0.0
     top_k: int = 4
-    prompt: ""
+    prompt: str = ""
     search_type: str = "similarity"
