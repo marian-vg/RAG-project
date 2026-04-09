@@ -3,34 +3,19 @@ import glob
 import re
 import shutil
 import time
-from typing import List, Literal, Optional
+from typing import Literal
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
-# LangChain Imports
 from langchain_community.document_loaders import UnstructuredPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_chroma import Chroma
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.documents import Document
 from langchain_community.vectorstores.utils import filter_complex_metadata
 
+from src.config import FarmaConfig
 load_dotenv()
-
-class FarmaConfig(BaseModel):
-    """Configuración centralizada para el motor FarmaRAG."""
-    docs_dir: str = "documentos"
-    chroma_path: str = "chroma_db"
-    collection_name: str = "farmarag_collection"
-    chunk_size: int = 1000
-    chunk_overlap: int = 200
-    embedding_model: str = "models/gemini-embedding-2-preview"
-    generation_model: str = "models/gemini-3.1-flash-lite-preview"
-    temperature: float = 0.0
-    top_k: int = 4
 
 class DocumentMetadata(BaseModel):
     """Esquema para la detección de entidades por contenido."""
@@ -55,6 +40,8 @@ class FarmaProcessor:
         return text.strip()
 
     def _detect_entity(self, text: str) -> str:
+        # Pausa para evitar 503/429 en detección
+        time.sleep(2)
         llm = ChatGoogleGenerativeAI(model=self.config.generation_model, temperature=0)
         structured_llm = llm.with_structured_output(DocumentMetadata)
         
@@ -73,7 +60,7 @@ class FarmaProcessor:
             return "DESCONOCIDA"
 
     def process(self, clean_first: bool = True):
-        """Ejecuta el pipeline completo de ingesta."""
+        """Ejecuta el pipeline de ingesta con batching inteligente para evitar cuotas."""
         pdf_files = glob.glob(os.path.join(self.config.docs_dir, "*.pdf"))
         if not pdf_files:
             print(f"[!] No se encontraron PDFs en {self.config.docs_dir}")
@@ -87,7 +74,13 @@ class FarmaProcessor:
             print(f"  -> Cargando: {filename}")
             
             try:
-                loader = UnstructuredPDFLoader(pdf_path, strategy="fast", mode="elements")
+                # Especificamos languages=["spa"] y restauramos estrategia/modo
+                loader = UnstructuredPDFLoader(
+                    pdf_path, 
+                    strategy="fast", 
+                    mode="elements",
+                    languages=["spa"]
+                )
                 elements = loader.load()
                 
                 if not elements: continue
@@ -111,13 +104,21 @@ class FarmaProcessor:
 
         if not all_chunks: return
 
-        # Limpiar metadatos y persistencia
+        # Limpiar metadatos
         all_chunks = filter_complex_metadata(all_chunks)
+        
+        # Elimiación segura de DB previa
         if clean_first and os.path.exists(self.config.chroma_path):
-            shutil.rmtree(self.config.chroma_path)
+            print(f"[*] Limpiando base de datos en {self.config.chroma_path}...")
+            for _ in range(5):
+                try:
+                    shutil.rmtree(self.config.chroma_path)
+                    break
+                except PermissionError:
+                    time.sleep(2)
 
-        # Vectorización
-        print(f"[*] Vectorizando {len(all_chunks)} fragmentos...")
+        # Vectorización con Batching
+        print(f"[*] Vectorizando {len(all_chunks)} fragmentos en lotes de 20...")
         embeddings = GoogleGenerativeAIEmbeddings(model=self.config.embedding_model)
         
         vectorstore = Chroma(
@@ -126,80 +127,20 @@ class FarmaProcessor:
             collection_name=self.config.collection_name
         )
         
-        batch_size = 50
+        batch_size = 20
         for i in range(0, len(all_chunks), batch_size):
             batch = all_chunks[i : i + batch_size]
-            vectorstore.add_documents(batch)
-            if i + batch_size < len(all_chunks):
-                time.sleep(30)
+            print(f"  [+] Indexando lote {(i//batch_size)+1}/{(len(all_chunks)//batch_size)+1}")
+            try:
+                vectorstore.add_documents(batch)
+                if i + batch_size < len(all_chunks):
+                    time.sleep(25)
+            except Exception as e:
+                if "429" in str(e):
+                    print("  [!] Límite alcanzado. Esperando 60s extra...")
+                    time.sleep(60)
+                    vectorstore.add_documents(batch)
+                else:
+                    raise e
         
-        print("[*] Ingesta completada con éxito.")
-
-class FarmaAuditor:
-    """Clase responsable de la recuperación y generación de respuestas."""
-    
-    def __init__(self, config: FarmaConfig):
-        self.config = config
-        self.embeddings = GoogleGenerativeAIEmbeddings(model=self.config.embedding_model)
-        self.vectorstore = Chroma(
-            persist_directory=self.config.chroma_path,
-            embedding_function=self.embeddings,
-            collection_name=self.config.collection_name
-        )
-
-    def _format_docs(self, docs: List[Document]) -> str:
-        formatted = []
-        for doc in docs:
-            source = doc.metadata.get("source", "Desconocido")
-            entidad = doc.metadata.get("entidad", "Desconocida")
-            formatted.append(f"--- DOC: {source} ({entidad}) ---\n{doc.page_content}")
-        return "\n\n".join(formatted)
-
-    def setup_chain(self):
-        """Configura la cadena LCEL."""
-        retriever = self.vectorstore.as_retriever(search_kwargs={"k": self.config.top_k})
-        llm = ChatGoogleGenerativeAI(
-            model=self.config.generation_model, 
-            temperature=self.config.temperature
-        )
-        
-        system_prompt = (
-            "Eres un auditor de farmacia estricto. Responde basándote ÚNICAMENTE en el contexto. "
-            "Si no está, di que no hay información suficiente. Cita siempre la fuente y entidad.\n\n"
-            "CONTEXTO:\n{context}"
-        )
-        
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", system_prompt),
-            ("human", "{question}")
-        ])
-        
-        return (
-            {"context": retriever | self._format_docs, "question": RunnablePassthrough()}
-            | prompt | llm | StrOutputParser()
-        )
-
-class FarmaRAG:
-    """Interfaz única (Fachada) para operar el sistema FarmaRAG."""
-    
-    def __init__(self, config: Optional[FarmaConfig] = None):
-        self.config = config or FarmaConfig()
-        self.processor = FarmaProcessor(self.config)
-        self._auditor = None
-
-    def ingest(self, clean_first: bool = True):
-        """Carga y vectoriza los documentos."""
-        self.processor.process(clean_first=clean_first)
-        # Forzar recarga del auditor tras nueva ingesta
-        self._auditor = None
-
-    @property
-    def auditor(self):
-        if self._auditor is None:
-            self._auditor = FarmaAuditor(self.config)
-        return self._auditor
-
-    def ask(self, question: str) -> str:
-        """Realiza una consulta al auditor."""
-        chain = self.auditor.setup_chain()
-        return chain.invoke(question)
+        print("[*] Ingesta completada.")

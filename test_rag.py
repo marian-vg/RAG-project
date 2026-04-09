@@ -24,7 +24,7 @@ def run_suite_de_pruebas():
     
     for i, p in enumerate(preguntas, 1):
         print(f"\n--- PRUEBA {i} ---")
-        consultar(p)
+        ask(p)
         
     print("="*60)
     print("SUITE DE PRUEBAS FINALIZADA")

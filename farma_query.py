@@ -4,7 +4,6 @@ from farma_engine import FarmaRAG, FarmaConfig
 def modo_interactivo():
     """Ejecuta el sistema RAG profesional en modo interactivo."""
     
-    # Personaliza aquí los parámetros para testear
     config = FarmaConfig(
         temperature=0.0,
         top_k=4
