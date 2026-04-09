@@ -27,25 +27,18 @@ def format_docs(docs: List[Document]) -> str:
     return "\n\n".join(formatted)
 
 def get_rag_chain():
-    """Configura y retorna la cadena RAG completa (Fase 4 y 5)."""
-    
-    # Inicializar Embeddings
+    """Configura y retorna la cadena RAG completa."""
     embeddings = GoogleGenerativeAIEmbeddings(model=EMBEDDING_MODEL)
     
-    # Cargar Vector Store (Fase 4)
     vectorstore = Chroma(
         persist_directory=CHROMA_PATH,
         embedding_function=embeddings,
         collection_name=COLLECTION_NAME
     )
     
-    # Configurar Retriever (Fase 4: Top-K=4)
     retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
-    
-    # Configurar LLM (Fase 5)
     llm = ChatGoogleGenerativeAI(model=MODEL_NAME, temperature=0)
     
-    # Ingeniería de Prompt (Fase 5)
     system_prompt = (
         "Eres un auditor de farmacia estricto y profesional. Tu objetivo es responder consultas "
         "sobre normativas, circulares y manuales de obras sociales (PAMI, DIM, COFAER). "
@@ -64,7 +57,6 @@ def get_rag_chain():
         ("human", "{question}")
     ])
     
-    # Cadena LCEL (Fase 5)
     rag_chain = (
         {"context": retriever | format_docs, "question": RunnablePassthrough()}
         | prompt
@@ -74,21 +66,36 @@ def get_rag_chain():
     
     return rag_chain
 
-def consultar(pregunta: str):
-    """Ejecuta una consulta y muestra la respuesta."""
-    print(f"\n[?] Pregunta: {pregunta}")
-    print("[*] Buscando en la base de datos y generando respuesta...")
+def modo_interactivo():
+    """Ejecuta el sistema RAG en un bucle infinito para consultas iterativas."""
+    print("\n" + "="*60)
+    print("SISTEMA DE AUDITORÍA FARMARAG - MODO INTERACTIVO")
+    print("Escribe 'salir' o 'exit' para finalizar.")
+    print("="*60)
     
+    # Pre-cargamos la cadena para mayor velocidad en las respuestas
     chain = get_rag_chain()
-    respuesta = chain.invoke(pregunta)
     
-    print("\n" + "="*50)
-    print("RESPUESTA DEL AUDITOR:")
-    print("="*50)
-    print(respuesta)
-    print("="*50 + "\n")
+    while True:
+        pregunta = input("\n[?] Ingrese su consulta: ").strip()
+        
+        if pregunta.lower() in ["salir", "exit", "quit"]:
+            print("[*] Cerrando sesión de auditoría. ¡Hasta luego!")
+            break
+            
+        if not pregunta:
+            continue
+            
+        print("[*] Consultando documentos...")
+        try:
+            respuesta = chain.invoke(pregunta)
+            print("\n" + "-"*30)
+            print("RESPUESTA:")
+            print("-"*30)
+            print(respuesta)
+            print("-"*30)
+        except Exception as e:
+            print(f"[!] Ocurrió un error durante la consulta: {e}")
 
 if __name__ == "__main__":
-    # Prueba rápida si se ejecuta directamente
-    test_query = "¿Cuáles son los requisitos para las recetas de veterinarios según DIM?"
-    consultar(test_query)
+    modo_interactivo()
