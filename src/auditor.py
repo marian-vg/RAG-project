@@ -39,6 +39,11 @@ class FarmaAuditor:
             temperature=self.config.temperature
         )
         
+        edge_prompt = src.config.prompt
+        
+        if edge_prompt:
+            system_prompt = edge_prompt
+
         system_prompt = (
             "Eres un auditor de farmacia estricto y profesional. Tu objetivo es responder consultas "
             "sobre normativas, circulares y manuales de obras sociales (PAMI, DIM, COFAER). "

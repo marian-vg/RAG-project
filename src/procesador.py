@@ -15,6 +15,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_community.vectorstores.utils import filter_complex_metadata
 
 from src.config import FarmaConfig
+
 load_dotenv()
 
 class DocumentMetadata(BaseModel):
@@ -45,6 +46,9 @@ class FarmaProcessor:
         structured_llm = llm.with_structured_output(DocumentMetadata)
         
         sample_text = text[:4000]
+
+        
+
         prompt = ChatPromptTemplate.from_messages([
             ("system", "Eres un experto en auditoría de farmacia argentina. Tu tarea es identificar la entidad emisora de un documento basándote exclusivamente en su contenido. Las opciones válidas son: DIM (Departamento Integral de Medicamentos), COFAER (Colegio Farmacéutico de Entre Ríos), PAMI, OSPA VIAL, OSER o DESCONOCIDA. Responde siempre en el formato estructurado solicitado."),
             ("human", "Analiza el documento e identifica la entidad:\n\n{text}")
