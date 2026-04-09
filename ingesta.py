@@ -1,9 +1,11 @@
-from src.engine import FarmaRAG, FarmaConfig
+from src.unificador import FarmaRAG, FarmaConfig
 
 def ejecutar_ingesta():
     config = FarmaConfig(
-        chunk_size=800,
-        chunk_overlap=150,
+        chunk_size=400,
+        chunk_overlap=60,
+        top_k=3,
+        temperature=0.4
     )
     
     rag = FarmaRAG(config)

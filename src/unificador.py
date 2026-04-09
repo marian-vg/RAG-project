@@ -8,12 +8,12 @@ class FarmaRAG:
     
     def __init__(self, config: Optional[FarmaConfig] = None):
         self.config = config or FarmaConfig()
-        self.processor = FarmaProcessor(self.config)
+        self.procesador = FarmaProcessor(self.config)
         self._auditor = None
 
     def ingest(self, clean_first: bool = True):
         """Carga y vectoriza los documentos."""
-        self.processor.process(clean_first=clean_first)
+        self.procesador.process(clean_first=clean_first)
         self._auditor = None
 
     @property

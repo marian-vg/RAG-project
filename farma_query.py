@@ -1,5 +1,5 @@
 import os
-from farma_engine import FarmaRAG, FarmaConfig
+from src.unificador import FarmaRAG, FarmaConfig
 
 def modo_interactivo():
     """Ejecuta el sistema RAG profesional en modo interactivo."""

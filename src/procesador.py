@@ -40,14 +40,13 @@ class FarmaProcessor:
         return text.strip()
 
     def _detect_entity(self, text: str) -> str:
-        # Pausa para evitar 503/429 en detección
         time.sleep(2)
         llm = ChatGoogleGenerativeAI(model=self.config.generation_model, temperature=0)
         structured_llm = llm.with_structured_output(DocumentMetadata)
         
         sample_text = text[:4000]
         prompt = ChatPromptTemplate.from_messages([
-            ("system", "Eres un experto en auditoría de farmacia argentina. Identifica la entidad emisora: DIM, COFAER, PAMI, OSPA VIAL, OSER o DESCONOCIDA."),
+            ("system", "Eres un experto en auditoría de farmacia argentina. Tu tarea es identificar la entidad emisora de un documento basándote exclusivamente en su contenido. Las opciones válidas son: DIM (Departamento Integral de Medicamentos), COFAER (Colegio Farmacéutico de Entre Ríos), PAMI, OSPA VIAL, OSER o DESCONOCIDA. Responde siempre en el formato estructurado solicitado."),
             ("human", "Analiza el documento e identifica la entidad:\n\n{text}")
         ])
         
