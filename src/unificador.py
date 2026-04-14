@@ -23,6 +23,6 @@ class FarmaRAG:
         return self._auditor
 
     def ask(self, question: str) -> str:
-        """Realiza una consulta al auditor."""
+        """Realiza una consulta al auditor con lógica de reintentos."""
         chain = self.auditor.setup_chain()
-        return chain.invoke(question)
+        return self.auditor._invoke_chain(chain, question)

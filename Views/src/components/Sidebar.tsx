@@ -57,7 +57,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 {['ollama', 'gemini'].map((p) => (
                   <button
                     key={p}
-                    onClick={() => onConfigChange(p, p === 'ollama' ? 'qwen2.5:0.5b' : 'gemini-1.5-flash')}
+                    onClick={() => onConfigChange(p, p === 'ollama' ? 'Qwen 2.5' : 'Gemini 3.1')}
                     className={`flex items-center justify-between p-3 rounded-xl border-2 transition-all ${
                       provider === p 
                         ? 'border-teal-500 bg-teal-50 text-teal-700 shadow-sm shadow-teal-100' 
@@ -70,6 +70,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 ))}
               </div>
             </section>
+
 
             {/* Model Section */}
             <section className="space-y-4">

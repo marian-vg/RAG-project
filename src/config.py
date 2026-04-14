@@ -10,13 +10,19 @@ class FarmaConfig(BaseModel):
     chunk_size: int = 800
     chunk_overlap: int = 150
     embedding_model: str = "models/gemini-embedding-001"
-    llm_provider: str = "ollama"  # "ollama" o "gemini"
-    llm_model: str = "qwen2.5:0.5b"  # p.ej. "qwen2.5:0.5b" o "gemini-3.1-flash-lite-preview"
+    llm_provider: str = "ollama"
+    llm_model: str = "qwen2.5:0.5b"  
     generation_model: str = "models/gemini-3.1-flash-lite-preview"
     temperature: float = 0.0
     top_k: int = 4
     prompt: str = ""
     search_type: str = "similarity"
+
+    # Mapeo de nombres amigables a IDs técnicos
+    MODEL_ALIASES: dict = {
+        "Qwen 2.5": "qwen2.5:0.5b",
+        "Gemini 3.1": "models/gemini-3.1-flash-lite-preview",
+    }
 
     def save(self, file_path="config.json"):
         """Guarda la configuración actual en un archivo JSON."""

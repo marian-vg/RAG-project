@@ -1,6 +1,7 @@
 import React from 'react';
 import { Bot, User, AlertCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import FAQCards from './FAQCards';
 
 interface Message {
   role: 'user' | 'assistant' | 'error';
@@ -11,9 +12,10 @@ interface ChatWindowProps {
   messages: Message[];
   isLoading: boolean;
   messagesEndRef: React.RefObject<HTMLDivElement>;
+  onFAQClick: (question: string) => void;
 }
 
-const ChatWindow: React.FC<ChatWindowProps> = ({ messages, isLoading, messagesEndRef }) => {
+const ChatWindow: React.FC<ChatWindowProps> = ({ messages, isLoading, messagesEndRef, onFAQClick }) => {
   return (
     <main className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50">
       {messages.map((message, index) => (
@@ -56,6 +58,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ messages, isLoading, messagesEn
             </div>
           </div>
         </div>
+      )}
+
+      {messages.length <= 1 && !isLoading && (
+        <FAQCards onFAQClick={onFAQClick} />
       )}
       <div ref={messagesEndRef} />
     </main>

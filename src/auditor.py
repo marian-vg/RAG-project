@@ -12,6 +12,8 @@ from langchain_core.documents import Document
 
 from src.config import FarmaConfig
 
+from tenacity import retry, stop_after_attempt, wait_exponential
+
 class FarmaAuditor:
     """Clase responsable de la recuperación y generación de respuestas."""
     
@@ -25,6 +27,15 @@ class FarmaAuditor:
             collection_name=self.config.collection_name
         )
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        reraise=True
+    )
+    def _invoke_chain(self, chain, question: str):
+        """Envuelve la ejecución de la cadena en una lógica de reintentos."""
+        return chain.invoke(question)
+
     def _format_docs(self, docs: List[Document]) -> str:
         formatted = []
         for doc in docs:
@@ -34,17 +45,20 @@ class FarmaAuditor:
         return "\n\n".join(formatted)
 
     def _get_llm(self):
-        """Fábrica de modelos según configuración."""
+        """Fábrica de modelos según configuración, resolviendo alias."""
+        
+        model_name = self.config.MODEL_ALIASES.get(self.config.llm_model, self.config.llm_model)
+        
         if self.config.llm_provider == "ollama":
-            print(f"[*] Usando modelo local via Ollama: {self.config.llm_model}")
+            print(f"[*] Usando modelo local via Ollama: {model_name} (Alias: {self.config.llm_model})")
             return ChatOllama(
-                model=self.config.llm_model,
+                model=model_name,
                 temperature=self.config.temperature
             )
         else:
-            print(f"[*] Usando modelo cloud via Gemini: {self.config.llm_model}")
+            print(f"[*] Usando modelo cloud via Gemini: {model_name} (Alias: {self.config.llm_model})")
             return ChatGoogleGenerativeAI(
-                model=self.config.llm_model,
+                model=model_name,
                 temperature=self.config.temperature
             )
 
