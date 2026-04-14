@@ -16,23 +16,31 @@ pip install -r requirements.txt
 ### 2. Ingesta de Documentos (Opcional si ya existe la DB)
 Si ha añadido nuevos PDFs a la carpeta `/documentos`, ejecute el procesador para actualizar la base de datos vectorial:
 ```bash
-python ingest.py
+python ingesta.py
 ```
 
-### 3. Iniciar el Servidor (Backend)
-Abra una terminal y ejecute el servidor de la API:
-```bash
-python server.py
-```
-*El servidor estará disponible en `http://localhost:8000`.*
+### 3. Ejecución del Sistema
 
-### 4. Iniciar la Interfaz Gráfica (Frontend)
-Abra una **segunda terminal**, diríjase a la carpeta de la vista e inicie el entorno de desarrollo:
+#### Opción A: Modo Interactiva (CLI)
+Si desea consultar directamente desde la terminal con selector de modelos:
 ```bash
-cd Views
-npm run dev
+python farma_query.py
 ```
-*La interfaz se abrirá automáticamente en su navegador (usualmente en `http://localhost:5173`).*
+
+#### Opción B: Interfaz Gráfica (Web)
+1.  **Iniciar el Servidor (Backend)**:
+    ```bash
+    python server.py
+    ```
+    *El servidor iniciará por defecto con Qwen 0.5b en `http://localhost:8000`.*
+
+2.  **Iniciar la Interfaz Gráfica (Frontend)**:
+    Abra una **segunda terminal**, diríjase a la carpeta de la vista e inicie el entorno de desarrollo:
+    ```bash
+    cd Views
+    npm run dev
+    ```
+    *La interfaz se abrirá en `http://localhost:5173`.*
 
 ---
 **Nota:** El sistema cuenta con un **Modo Auditor Estricto**, por lo que si una consulta no tiene sustento en los documentos, el chatbot informará que no posee información suficiente en lugar de improvisar una respuesta.

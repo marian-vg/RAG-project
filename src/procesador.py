@@ -3,13 +3,14 @@ import glob
 import re
 import shutil
 import time
-from typing import Literal
+from typing import Literal, Optional
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
 from langchain_community.document_loaders import UnstructuredPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_chroma import Chroma
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_community.vectorstores.utils import filter_complex_metadata
@@ -36,21 +37,38 @@ class FarmaProcessor:
         )
 
     def _clean_text(self, text: str) -> str:
+        """Limpieza profunda para reducir ruido en modelos pequeños."""
         text = re.sub(r'\n{3,}', '\n\n', text)
         text = re.sub(r' +', ' ', text)
+        # Eliminar secuencias largas de caracteres especiales (ruido de OCR/formato)
+        text = re.sub(r'[-_=*]{4,}', '', text)
         return text.strip()
 
-    def _detect_entity(self, text: str) -> str:
-        time.sleep(2)
+    def _extract_entity_from_filename(self, filename: str) -> Optional[str]:
+        """Heurística rápida para evitar llamadas al LLM."""
+        filename_upper = filename.upper()
+        entities = ["DIM", "COFAER", "PAMI", "OSPA VIAL", "OSER"]
+        for ent in entities:
+            if ent in filename_upper:
+                return ent
+        return None
+
+    def _detect_entity(self, text: str, filename: str) -> str:
+        # 1. Intentar por nombre de archivo
+        entidad_rapida = self._extract_entity_from_filename(filename)
+        if entidad_rapida:
+            print(f"    [+] Entidad detectada por nombre: {entidad_rapida}")
+            return entidad_rapida
+
+        # 2. Fallback al LLM (Solo si no se detectó por nombre)
+        print(f"    [?] Consultando LLM para identificar entidad en {filename}...")
         llm = ChatGoogleGenerativeAI(model=self.config.generation_model, temperature=0)
         structured_llm = llm.with_structured_output(DocumentMetadata)
         
         sample_text = text[:4000]
 
-        
-
         prompt = ChatPromptTemplate.from_messages([
-            ("system", "Eres un experto en auditoría de farmacia argentina. Tu tarea es identificar la entidad emisora de un documento basándote exclusivamente en su contenido. Las opciones válidas son: DIM (Departamento Integral de Medicamentos), COFAER (Colegio Farmacéutico de Entre Ríos), PAMI, OSPA VIAL, OSER o DESCONOCIDA. Responde siempre en el formato estructurado solicitado."),
+            ("system", "Eres un experto en auditoría de farmacia argentina. Tu tarea es identificar la entidad emisora de un documento basándote exclusivamente en su contenido. Las opciones válidas son: DIM, COFAER, PAMI, OSPA VIAL, OSER o DESCONOCIDA. Responde siempre en el formato estructurado solicitado."),
             ("human", "Analiza el documento e identifica la entidad:\n\n{text}")
         ])
         
@@ -59,11 +77,11 @@ class FarmaProcessor:
             result = chain.invoke({"text": sample_text})
             return result.entidad
         except Exception as e:
-            print(f"[!] Error identificando entidad: {e}")
+            print(f"    [!] Error identificando entidad con LLM: {e}")
             return "DESCONOCIDA"
 
     def process(self, clean_first: bool = True):
-        """Ejecuta el pipeline de ingesta con batching inteligente para evitar cuotas."""
+        """Ejecuta el pipeline de ingesta optimizado."""
         pdf_files = glob.glob(os.path.join(self.config.docs_dir, "*.pdf"))
         if not pdf_files:
             print(f"[!] No se encontraron PDFs en {self.config.docs_dir}")
@@ -77,7 +95,6 @@ class FarmaProcessor:
             print(f"  -> Cargando: {filename}")
             
             try:
-                # Especificamos languages=["spa"] y restauramos estrategia/modo
                 loader = UnstructuredPDFLoader(
                     pdf_path, 
                     strategy="fast", 
@@ -89,7 +106,7 @@ class FarmaProcessor:
                 if not elements: continue
                 
                 full_text = "\n".join([el.page_content for el in elements])
-                entidad = self._detect_entity(full_text)
+                entidad = self._detect_entity(full_text, filename)
                 
                 for el in elements:
                     el.page_content = self._clean_text(el.page_content)
@@ -107,22 +124,15 @@ class FarmaProcessor:
 
         if not all_chunks: return
 
-        # Limpiar metadatos
         all_chunks = filter_complex_metadata(all_chunks)
         
-        # Elimiación segura de DB previa
         if clean_first and os.path.exists(self.config.chroma_path):
             print(f"[*] Limpiando base de datos en {self.config.chroma_path}...")
-            for _ in range(5):
-                try:
-                    shutil.rmtree(self.config.chroma_path)
-                    break
-                except PermissionError:
-                    time.sleep(2)
+            shutil.rmtree(self.config.chroma_path)
 
-        # Vectorización con Batching
-        print(f"[*] Vectorizando {len(all_chunks)} fragmentos en lotes de 20...")
-        embeddings = GoogleGenerativeAIEmbeddings(model=self.config.embedding_model)
+        # Vectorización local
+        print(f"[*] Vectorizando {len(all_chunks)} fragmentos localmente...")
+        embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
         
         vectorstore = Chroma(
             persist_directory=self.config.chroma_path,
@@ -130,20 +140,15 @@ class FarmaProcessor:
             collection_name=self.config.collection_name
         )
         
-        batch_size = 20
+        # Al ser local, no necesitamos batching con sleeps largos
+        batch_size = 100 
         for i in range(0, len(all_chunks), batch_size):
             batch = all_chunks[i : i + batch_size]
             print(f"  [+] Indexando lote {(i//batch_size)+1}/{(len(all_chunks)//batch_size)+1}")
             try:
                 vectorstore.add_documents(batch)
-                if i + batch_size < len(all_chunks):
-                    time.sleep(25)
             except Exception as e:
-                if "429" in str(e):
-                    print("  [!] Límite alcanzado. Esperando 60s extra...")
-                    time.sleep(60)
-                    vectorstore.add_documents(batch)
-                else:
-                    raise e
+                print(f"  [!] Error indexando lote: {e}")
+                raise e
         
         print("[*] Ingesta completada.")

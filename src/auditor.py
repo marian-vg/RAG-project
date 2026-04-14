@@ -1,5 +1,9 @@
+import json
+import os
 from typing import List
-from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_ollama import ChatOllama
 from langchain_chroma import Chroma
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
@@ -13,7 +17,8 @@ class FarmaAuditor:
     
     def __init__(self, config: FarmaConfig):
         self.config = config
-        self.embeddings = GoogleGenerativeAIEmbeddings(model=self.config.embedding_model)
+        # Cambio a embeddings locales usando HuggingFace (MiniLM es ligero y eficiente)
+        self.embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
         self.vectorstore = Chroma(
             persist_directory=self.config.chroma_path,
             embedding_function=self.embeddings,
@@ -28,37 +33,58 @@ class FarmaAuditor:
             formatted.append(f"--- DOC: {source} ({entidad}) ---\n{doc.page_content}")
         return "\n\n".join(formatted)
 
+    def _get_llm(self):
+        """Fábrica de modelos según configuración."""
+        if self.config.llm_provider == "ollama":
+            print(f"[*] Usando modelo local via Ollama: {self.config.llm_model}")
+            return ChatOllama(
+                model=self.config.llm_model,
+                temperature=self.config.temperature
+            )
+        else:
+            print(f"[*] Usando modelo cloud via Gemini: {self.config.llm_model}")
+            return ChatGoogleGenerativeAI(
+                model=self.config.llm_model,
+                temperature=self.config.temperature
+            )
+
+    def _load_prompts(self):
+        """Carga prompts desde archivo JSON con fallback."""
+        file_path = "src/prompts.json"
+        if os.path.exists(file_path):
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    template = data.get("system_prompt_template", "")
+                    rules = "\n".join(data.get("rules", []))
+                    return template.replace("{rules}", rules)
+            except Exception as e:
+                print(f"[!] Error cargando prompts.json: {e}")
+        
+        # Fallback si falla la carga o el archivo no existe
+        return (
+            "Eres un auditor de farmacia estricto. Tu tarea es responder consultas sobre normativas "
+            "de obras sociales (PAMI, DIM, COFAER, OSER, OSPA VIAL) usando SOLO el contexto provisto.\n\n"
+            "REGLAS CRÍTICAS:\n"
+            "1. Si la respuesta no está en el contexto, di: 'No hay información suficiente'.\n"
+            "2. NO inventes datos. NO uses conocimiento previo.\n"
+            "3. Caso especial OSER: Desde el 01/01/2026 NO se reciben recetas físicas en papel por decreto de OSER.\n"
+            "4. Cita siempre la FUENTE y la ENTIDAD al final.\n\n"
+            "<contexto>\n"
+            "{context}\n"
+            "</contexto>"
+        )
+
     def setup_chain(self):
-        """Configura la cadena LCEL."""
+        """Configura la cadena LCEL con prompts estructurados para modelos pequeños."""
         retriever = self.vectorstore.as_retriever(
             search_type=self.config.search_type,
             search_kwargs={"k": self.config.top_k}
         )
-        llm = ChatGoogleGenerativeAI(
-            model=self.config.generation_model, 
-            temperature=self.config.temperature
-        )
         
-        edge_prompt = self.config.prompt
+        llm = self._get_llm()
+        system_prompt = self._load_prompts()
 
-        if edge_prompt:
-            system_prompt = edge_prompt
-        else:
-            system_prompt = (
-                "Si preguntan por recetas fisicas en papel expendidas luego del primero de enero de 2026, NO se reciben por decreto de OSER (Obra Social de Entre Rios), OSER declaro plena utilización de recetas electrónicas en la provincia"
-                "Eres un auditor de farmacia estricto y profesional. Tu objetivo es responder consultas "
-                "sobre normativas, circulares y manuales de obras sociales (PAMI, DIM, COFAER). "
-                "Utiliza ÚNICAMENTE los fragmentos de contexto provistos para responder. "
-                "No inventes información ni utilices conocimientos externos. "
-                "Al finalizar tu respuesta, cita siempre el nombre del archivo fuente y la entidad mencionada en los metadatos."
-                "Si la respuesta no se encuentra en el contexto, di exactamente: "
-                "'No hay información suficiente en los documentos cargados para responder esta pregunta.' "
-                "\n\n"
-                "CONTEXTO:\n"
-                "{context}"
-            )
-
-        
         prompt = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
             ("human", "{question}")
