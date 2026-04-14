@@ -4,7 +4,25 @@ from src.unificador import FarmaRAG, FarmaConfig
 def modo_interactivo():
     """Ejecuta el sistema RAG profesional en modo interactivo."""
     
+    print("\n" + "="*60)
+    print("SISTEMA DE AUDITORÍA FARMARAG PROFESIONAL - CONFIGURACIÓN")
+    print("="*60)
+    print("Seleccione el modelo a utilizar:")
+    print("1. Qwen 0.5b (Local via Ollama) - [RECOMENDADO / POR DEFECTO]")
+    print("2. Gemini 1.5 Flash (Cloud via Google)")
+    
+    opcion = input("\n[?] Elija una opción (1 o 2): ").strip()
+    
+    if opcion == "2":
+        llm_provider = "gemini"
+        llm_model = "models/gemini-1.5-flash-lite-001"
+    else:
+        llm_provider = "ollama"
+        llm_model = "qwen2.5:0.5b"
+
     config = FarmaConfig(
+        llm_provider=llm_provider,
+        llm_model=llm_model,
         temperature=0.0,
         top_k=4
     )
@@ -12,7 +30,7 @@ def modo_interactivo():
     rag = FarmaRAG(config)
     
     print("\n" + "="*60)
-    print("SISTEMA DE AUDITORÍA FARMARAG PROFESIONAL - MODO INTERACTIVO")
+    print(f"AUDITORÍA INICIADA CON: {llm_model.upper()} ({llm_provider.upper()})")
     print("Escribe 'salir' o 'exit' para finalizar.")
     print("="*60)
     
