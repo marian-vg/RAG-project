@@ -44,22 +44,27 @@ class FarmaAuditor:
             formatted.append(f"--- DOC: {source} ({entidad}) ---\n{doc.page_content}")
         return "\n\n".join(formatted)
 
-    def _get_llm(self):
-        """Fábrica de modelos según configuración, resolviendo alias."""
-        
+    def _get_llm(self, provider_override: str = None):
+        """Fábrica de modelos según configuración, resolviendo alias y permitiendo overrides."""
+        provider = provider_override or self.config.llm_provider
         model_name = self.config.MODEL_ALIASES.get(self.config.llm_model, self.config.llm_model)
         
-        if self.config.llm_provider == "ollama":
-            print(f"[*] Usando modelo local via Ollama: {model_name} (Alias: {self.config.llm_model})")
+        # Si hay override a ollama pero el modelo actual es de gemini, forzamos Qwen
+        if provider == "ollama" and "gemini" in model_name.lower():
+            model_name = self.config.MODEL_ALIASES.get("Qwen 2.5", "qwen2.5:0.5b")
+        
+        if provider == "ollama":
+            print(f"[*] Usando modelo local via Ollama: {model_name}")
             return ChatOllama(
                 model=model_name,
                 temperature=self.config.temperature
             )
         else:
-            print(f"[*] Usando modelo cloud via Gemini: {model_name} (Alias: {self.config.llm_model})")
+            print(f"[*] Usando modelo cloud via Gemini: {model_name}")
             return ChatGoogleGenerativeAI(
                 model=model_name,
-                temperature=self.config.temperature
+                temperature=self.config.temperature,
+                timeout=20  # Límite de 20 segundos para evitar esperas excesivas
             )
 
     def _load_prompts(self):
@@ -89,14 +94,14 @@ class FarmaAuditor:
             "</contexto>"
         )
 
-    def setup_chain(self):
-        """Configura la cadena LCEL con prompts estructurados para modelos pequeños."""
+    def setup_chain(self, provider_override: str = None):
+        """Configura la cadena LCEL con soporte para override de proveedor."""
         retriever = self.vectorstore.as_retriever(
             search_type=self.config.search_type,
             search_kwargs={"k": self.config.top_k}
         )
         
-        llm = self._get_llm()
+        llm = self._get_llm(provider_override=provider_override)
         system_prompt = self._load_prompts()
 
         prompt = ChatPromptTemplate.from_messages([
