@@ -42,19 +42,19 @@ function App() {
     fetchConfig();
   }, []);
 
-  const handleSend = async () => {
-    if (!input.trim() || isLoading) return;
+  const handleSend = async (overrideInput?: string) => {
+    const textToSend = overrideInput || input;
+    if (!textToSend.trim() || isLoading) return;
 
-    const userMessage = input.trim();
     setInput('');
-    setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    setMessages(prev => [...prev, { role: 'user', content: textToSend }]);
     setIsLoading(true);
 
     try {
       const response = await fetch('http://localhost:8000/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: userMessage }),
+        body: JSON.stringify({ question: textToSend }),
       });
 
       if (!response.ok) {
@@ -144,6 +144,7 @@ function App() {
           messages={messages} 
           isLoading={isLoading} 
           messagesEndRef={messagesEndRef} 
+          onFAQClick={handleSend}
         />
 
         {/* Input Area Moderna */}
@@ -161,7 +162,7 @@ function App() {
                   className="flex-1 pl-4 py-4 bg-transparent outline-none text-slate-700 placeholder:text-slate-400 font-medium"
                 />
                 <button
-                  onClick={handleSend}
+                  onClick={() => handleSend()}
                   disabled={!input.trim() || isLoading}
                   className="p-4 rounded-xl bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 disabled:grayscale transition-all shadow-lg shadow-teal-200 active:scale-95"
                 >

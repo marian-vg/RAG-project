@@ -1,7 +1,7 @@
 import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from src.unificador import FarmaRAG
 from src.config import FarmaConfig
 
@@ -34,7 +34,7 @@ class ConfigRequest(BaseModel):
     llm_model: str
 
 class QueryRequest(BaseModel):
-    question: str
+    question: str = Field(..., min_length=3, max_length=500, description="La pregunta debe tener entre 3 y 500 caracteres.")
 
 class QueryResponse(BaseModel):
     answer: str
