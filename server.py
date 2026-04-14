@@ -2,6 +2,7 @@ import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from typing import Optional
 from src.unificador import FarmaRAG
 from src.config import FarmaConfig
 
@@ -35,6 +36,7 @@ class ConfigRequest(BaseModel):
 
 class QueryRequest(BaseModel):
     question: str = Field(..., min_length=3, max_length=500, description="La pregunta debe tener entre 3 y 500 caracteres.")
+    provider: Optional[str] = None
 
 class QueryResponse(BaseModel):
     answer: str
@@ -45,7 +47,8 @@ def read_root():
         "status": "online", 
         "system": "FarmaRAG Auditor", 
         "engine_loaded": rag is not None,
-        "current_model": rag.config.llm_model if rag else None
+        "current_model": rag.config.get_friendly_name() if rag else None,
+        "current_provider": rag.config.llm_provider if rag else None
     }
 
 @app.post("/config")
@@ -73,6 +76,7 @@ def update_config(request: ConfigRequest):
 async def ask_auditor(request: QueryRequest):
     """
     Endpoint para realizar consultas al auditor de farmacia.
+    Soporta fallback inteligente ante alta demanda de modelos cloud.
     """
     if not rag:
         raise HTTPException(status_code=503, detail="Motor RAG no disponible")
@@ -81,12 +85,20 @@ async def ask_auditor(request: QueryRequest):
         raise HTTPException(status_code=400, detail="La pregunta no puede estar vacía")
     
     try:
-        print(f"[*] Procesando consulta: {request.question}")
-        respuesta = rag.ask(request.question)
+        print(f"[*] Procesando consulta ({request.provider or 'default'}): {request.question}")
+        respuesta = rag.ask(request.question, provider_override=request.provider)
         return QueryResponse(answer=respuesta)
     except Exception as e:
         print(f"[!] Error procesando consulta: {e}")
-        # Retornamos el error detallado para ayudar a la depuración
+        error_msg = str(e).lower()
+        
+        # Identificar errores de alta demanda o saturación en Gemini
+        if "503" in error_msg or "overloaded" in error_msg or "rate limit" in error_msg or "429" in error_msg or "timeout" in error_msg:
+            raise HTTPException(
+                status_code=503, 
+                detail="model_overloaded"
+            )
+            
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":

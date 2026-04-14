@@ -11,7 +11,7 @@ class FarmaConfig(BaseModel):
     chunk_overlap: int = 150
     embedding_model: str = "models/gemini-embedding-001"
     llm_provider: str = "ollama"
-    llm_model: str = "qwen2.5:0.5b"  
+    llm_model: str = "Qwen 2.5"  
     generation_model: str = "models/gemini-3.1-flash-lite-preview"
     temperature: float = 0.0
     top_k: int = 4
@@ -23,6 +23,14 @@ class FarmaConfig(BaseModel):
         "Qwen 2.5": "qwen2.5:0.5b",
         "Gemini 3.1": "models/gemini-3.1-flash-lite-preview",
     }
+
+    def get_friendly_name(self) -> str:
+        """Retorna el nombre amigable si el llm_model es un ID técnico conocido."""
+        # Búsqueda inversa en el diccionario de alias
+        for friendly, technical in self.MODEL_ALIASES.items():
+            if self.llm_model == technical:
+                return friendly
+        return self.llm_model
 
     def save(self, file_path="config.json"):
         """Guarda la configuración actual en un archivo JSON."""

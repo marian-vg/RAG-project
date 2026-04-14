@@ -33,7 +33,7 @@ function App() {
           const data = await response.json();
           setIsOnline(data.engine_loaded);
           if (data.current_model) setModel(data.current_model);
-          // Nota: El backend / no devuelve el provider actualmente, lo asumimos por ahora
+          if (data.current_provider) setProvider(data.current_provider);
         }
       } catch (err) {
         console.error("Error conectando con el backend:", err);
@@ -42,20 +42,43 @@ function App() {
     fetchConfig();
   }, []);
 
-  const handleSend = async (overrideInput?: string) => {
+  const handleSend = async (overrideInput?: string, forcedProvider?: string) => {
     const textToSend = overrideInput || input;
     if (!textToSend.trim() || isLoading) return;
 
-    setInput('');
-    setMessages(prev => [...prev, { role: 'user', content: textToSend }]);
+    if (!overrideInput) setInput('');
+    
+    // Si no es un reintento automático (forcedProvider), añadimos el mensaje del usuario
+    if (!forcedProvider) {
+      setMessages(prev => [...prev, { role: 'user', content: textToSend }]);
+    }
+    
     setIsLoading(true);
 
     try {
       const response = await fetch('http://localhost:8000/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: textToSend }),
+        body: JSON.stringify({ 
+          question: textToSend,
+          provider: forcedProvider || undefined 
+        }),
       });
+
+      // Manejo de Fallback Inteligente (Saturación de Gemini)
+      if (response.status === 503) {
+        const errorData = await response.json().catch(() => ({ detail: '' }));
+        if (errorData.detail === 'model_overloaded' && !forcedProvider) {
+          // 1. Añadimos mensaje de aviso
+          setMessages(prev => [...prev, { 
+            role: 'assistant', 
+            content: '⚠️ **Aviso:** El modelo actual está experimentando una alta demanda. Procesando tu consulta con el modelo local **Qwen**...' 
+          }]);
+          
+          // 2. Disparamos reintento automático con Ollama
+          return handleSend(textToSend, 'ollama');
+        }
+      }
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ detail: 'Error en el servidor' }));

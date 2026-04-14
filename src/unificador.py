@@ -22,7 +22,7 @@ class FarmaRAG:
             self._auditor = FarmaAuditor(self.config)
         return self._auditor
 
-    def ask(self, question: str) -> str:
-        """Realiza una consulta al auditor con lógica de reintentos."""
-        chain = self.auditor.setup_chain()
+    def ask(self, question: str, provider_override: str = None) -> str:
+        """Realiza una consulta al auditor con lógica de reintentos y soporte de override."""
+        chain = self.auditor.setup_chain(provider_override=provider_override)
         return self.auditor._invoke_chain(chain, question)
