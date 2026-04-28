@@ -175,26 +175,44 @@ sdd-init/{project}          → Project initialization context
 /
 ├── server.py              # FastAPI app
 ├── config.json            # Runtime config (JSON persistence)
+├── requirements.txt       # Python dependencies
+├── README.md              # Project documentation
+├── AGENTS.md              # This file
+├── .gitignore
 ├── src/
+│   ├── __init__.py
 │   ├── auditor.py          # RAG chain + LLM factory + exceptions
 │   ├── unificador.py      # FarmaRAG facade
 │   ├── config.py           # FarmaConfig Pydantic model
 │   ├── procesador.py       # PDF ingestion + entity detection
 │   └── prompts.json       # Prompt templates
 ├── Views/                  # Svelte frontend
-│   ├── src/
-│   │   ├── App.svelte      # Main app component
-│   │   ├── main.ts         # Entry point
-│   │   ├── app.css         # Global styles
-│   │   ├── lib/
-│   │   │   └── toast.ts    # Toast notification store
-│   │   └── components/
-│   │       ├── Sidebar.svelte
-│   │       ├── ChatWindow.svelte
-│   │       ├── FAQCards.svelte
-│   │       └── Toast.svelte
-│   └── ...
+│   ├── package.json
+│   └── src/
+│       ├── App.svelte      # Main app component
+│       ├── main.ts         # Entry point
+│       ├── app.css         # Global styles
+│       ├── lib/
+│       │   └── toast.ts    # Toast notification store
+│       ├── components/
+│       │   ├── Sidebar.svelte
+│       │   ├── ChatWindow.svelte
+│       │   ├── FAQCards.svelte
+│       │   └── Toast.svelte
+│       └── assets/
+│           └── hero.png
+├── scripts/                # Utility scripts
+│   ├── ingesta.py
+│   ├── farma_query.py
+│   ├── listar_modelos.py
+│   └── test_rag.py
+├── docs/                   # Documentation
+│   ├── README.md
+│   ├── ERRORS.md
+│   └── RESUME.md
+├── logs/                   # Runtime logs + dead letter
+├── tests/                  # Test suite (pending)
 ├── .agents/               # Agent skills (OpenSpec format)
 ├── .atl/                  # Agent Teams Lite config
-└── AGENTS.md              # This file
+└── .env                   # Environment variables
 ```
