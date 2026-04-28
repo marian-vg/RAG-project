@@ -2,6 +2,8 @@
   import { Send, Bot, Loader2, FileText, Pill, Settings, Activity } from 'lucide-svelte';
   import Sidebar from './components/Sidebar.svelte';
   import ChatWindow from './components/ChatWindow.svelte';
+  import Toast from './components/Toast.svelte';
+  import { toasts } from './lib/toast';
   import { onMount } from 'svelte';
 
   interface Message {
@@ -20,6 +22,8 @@
   let isSavingConfig = $state(false);
   let isOnline = $state(false);
   let messagesEndRef = $state<HTMLDivElement | null>(null);
+  let lastConfigChange = 0;
+  const CONFIG_CHANGE_COOLDOWN = 500;
 
   onMount(async () => {
     const fetchConfig = async () => {
@@ -38,13 +42,13 @@
     await fetchConfig();
   });
 
-  async function handleSend(overrideInput?: string, forcedProvider?: string) {
+  async function handleSend(overrideInput?: string) {
     const textToSend = overrideInput || input;
     if (!textToSend.trim() || isLoading) return;
 
     if (!overrideInput) input = '';
 
-    if (!forcedProvider) {
+    if (overrideInput) {
       messages = [...messages, { role: 'user', content: textToSend }];
     }
 
@@ -54,22 +58,8 @@
       const response = await fetch('http://localhost:8000/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          question: textToSend,
-          provider: forcedProvider || undefined
-        }),
+        body: JSON.stringify({ question: textToSend }),
       });
-
-      if (response.status === 503) {
-        const errorData = await response.json().catch(() => ({ detail: '' }));
-        if (errorData.detail === 'model_overloaded' && !forcedProvider) {
-          messages = [...messages, {
-            role: 'assistant',
-            content: '⚠️ **Aviso:** El modelo actual está experimentando una alta demanda. Procesando tu consulta con el modelo local **Qwen**...'
-          }];
-          return handleSend(textToSend, 'ollama');
-        }
-      }
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ detail: 'Error en el servidor' }));
@@ -77,16 +67,38 @@
       }
 
       const data = await response.json();
+
+      if (data.fallback_triggered) {
+        toasts.show(
+          `Fallback: usando modelo ${data.provider_used === 'ollama' ? 'local (Qwen)' : 'cloud (Gemini)'}`,
+          'warning'
+        );
+      }
+
       messages = [...messages, { role: 'assistant', content: data.answer }];
+
     } catch (error: any) {
       const msg = error.message === 'Failed to fetch' ? 'Servidor desconectado' : error.message;
       messages = [...messages, { role: 'error', content: `Error: ${msg}` }];
+      toasts.show(msg, 'error');
     } finally {
       isLoading = false;
     }
   }
 
   async function handleConfigChange(newProvider: string, newModel: string) {
+    const now = Date.now();
+
+    if (newProvider === provider && newModel === model) {
+      return;
+    }
+
+    if (now - lastConfigChange < CONFIG_CHANGE_COOLDOWN) {
+      return;
+    }
+    lastConfigChange = now;
+
+    const reallyChanged = newProvider !== provider || newModel !== model;
     provider = newProvider;
     model = newModel;
     isSavingConfig = true;
@@ -100,15 +112,20 @@
 
       if (!response.ok) throw new Error("Error guardando config");
 
-      const data = await response.json();
-      console.log("Config actualizada:", data);
-    } catch (err) {
+      if (reallyChanged) {
+        toasts.show(`Configuración guardada: ${newProvider} (${newModel})`, 'success');
+      }
+
+    } catch (err: any) {
       console.error(err);
+      toasts.show('Error al guardar configuración', 'error');
     } finally {
       setTimeout(() => isSavingConfig = false, 800);
     }
   }
 </script>
+
+<Toast />
 
 <div class="flex h-screen bg-slate-100 overflow-hidden font-sans">
   <div class={`flex flex-col flex-1 transition-all duration-300 ${isSidebarOpen ? 'pr-80' : 'pr-0'}`}>
