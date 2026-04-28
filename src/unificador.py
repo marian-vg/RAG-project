@@ -27,9 +27,9 @@ class FarmaRAG:
         chain = self.auditor.setup_chain(provider_override=provider_override)
         return self.auditor._invoke_chain(chain, question)
 
-    def ask_with_fallback(self, question: str, provider_override: str = None):
+    def ask_with_fallback(self, question: str, preferred_provider: str = None):
         """
         Realiza una consulta con fallback automático entre providers.
         Retorna: (respuesta, provider_used)
         """
-        return self.auditor.ask_with_fallback(question, provider_override=provider_override)
+        return self.auditor.ask_with_fallback(question, preferred_provider=preferred_provider)

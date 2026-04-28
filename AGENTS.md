@@ -137,7 +137,7 @@ sdd-init/{project}          → Project initialization context
 | **Frontend Icons** | lucide-svelte |
 | **Frontend Markdown** | marked |
 | **Error Handling** | tenacity (retry), custom exceptions |
-| **Testing** | None detected |
+| **Testing** | ✅ pytest (`pytest>=7.0`) |
 
 ---
 
@@ -145,11 +145,11 @@ sdd-init/{project}          → Project initialization context
 
 | Capability | Status |
 |------------|--------|
-| Test Runner | ❌ Not found |
-| Unit Tests | ❌ |
-| Integration Tests | ❌ |
-| E2E Tests | ❌ |
-| Coverage | ❌ |
+| Test Runner | ✅ pytest |
+| Unit Tests | ✅ `tests/unit-tests/` |
+| Integration Tests | ✅ `tests/integration-tests/` |
+| Config Tests | ✅ `tests/config-tests/` |
+| Scripts Tests | ✅ `tests/scripts-tests/` |
 | Linter | ✅ ESLint 9.x (`npm run lint`) |
 | Type Checker | ✅ TypeScript (`tsc --noEmit`) |
 
@@ -211,7 +211,14 @@ sdd-init/{project}          → Project initialization context
 │   ├── ERRORS.md
 │   └── RESUME.md
 ├── logs/                   # Runtime logs + dead letter
-├── tests/                  # Test suite (pending)
+├── tests/                  # Test suite
+│   ├── conftest.py         # Pytest fixtures
+│   ├── test_data.py        # FAQ queries + synthetic queries
+│   ├── results_logger.py   # JSON audit logger
+│   ├── config-tests/       # Parameter variation tests
+│   ├── integration-tests/  # Flow tests
+│   ├── unit-tests/         # Isolated component tests
+│   └── scripts-tests/      # Scripts validation tests
 ├── .agents/               # Agent skills (OpenSpec format)
 ├── .atl/                  # Agent Teams Lite config
 └── .env                   # Environment variables
