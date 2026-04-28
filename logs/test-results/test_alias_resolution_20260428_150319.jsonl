@@ -1,0 +1,4 @@
+{"timestamp": "2026-04-28T18:03:19.878633", "test_name": "test_alias_resolution", "params": {"friendly_name": "Qwen 2.5"}, "result": {"technical_name": "qwen2.5:0.5b", "expected": "qwen2.5:0.5b"}}
+{"timestamp": "2026-04-28T18:03:19.879663", "test_name": "test_alias_resolution", "params": {"friendly_name": "Gemini 3.1"}, "result": {"technical_name": "models/gemini-3.1-flash-lite-preview", "expected": "models/gemini-3.1-flash-lite-preview"}}
+{"timestamp": "2026-04-28T18:03:19.884289", "test_name": "test_alias_resolution", "params": {"technical_name": "qwen2.5:0.5b"}, "result": {"friendly_name": "Gemini 3.1", "expected": "Qwen 2.5"}}
+{"timestamp": "2026-04-28T18:03:19.885611", "test_name": "test_alias_resolution", "params": {"technical_name": "models/gemini-3.1-flash-lite-preview"}, "result": {"friendly_name": "Gemini 3.1", "expected": "Gemini 3.1"}}

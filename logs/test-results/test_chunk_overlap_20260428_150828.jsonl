@@ -1,0 +1,1 @@
+{"timestamp": "2026-04-28T18:08:28.316628", "test_name": "test_chunk_overlap", "params": {"chunk_overlap": 150, "query_id": "faq_pami"}, "result": {"answer_length": 114, "answer_preview": "No hay información suficiente.\n\nFUENTE: Circular 53 DIM, Circular 52 DIM, Circular 4 COFAER.\nENTIDAD: DIM, COFAER.", "provider_used": "gemini"}}

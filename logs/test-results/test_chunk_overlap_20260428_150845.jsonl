@@ -1,0 +1,1 @@
+{"timestamp": "2026-04-28T18:08:45.659555", "test_name": "test_chunk_overlap", "params": {"chunk_overlap": 150, "query_id": "faq_oser"}, "result": {"answer_length": 132, "answer_preview": "Desde el 01/01/2026 NO se reciben recetas físicas en papel por decreto de OSER.\n\nFUENTE: Reglas críticas del sistema.\nENTIDAD: OSER.", "provider_used": "gemini"}}
