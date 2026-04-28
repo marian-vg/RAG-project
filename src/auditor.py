@@ -1,6 +1,7 @@
 import json
 import os
-from typing import List
+import time
+from typing import List, Tuple, Optional
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_ollama import ChatOllama
@@ -9,17 +10,45 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.documents import Document
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.config import FarmaConfig
 
-from tenacity import retry, stop_after_attempt, wait_exponential
+LLM_TIMEOUT = 30
+PROVIDER_ORDER = ["gemini", "ollama"]
+
+
+class LLMProviderError(Exception):
+    """Excepción base para errores de provider LLM."""
+    def __init__(self, provider: str, message: str, is_retryable: bool = True):
+        self.provider = provider
+        self.is_retryable = is_retryable
+        super().__init__(message)
+
+
+class LLMRateLimitError(LLMProviderError):
+    """Error específico para rate limiting."""
+    def __init__(self, provider: str, message: str = "Rate limit exceeded"):
+        super().__init__(provider, message, is_retryable=True)
+
+
+class LLMConnectionError(LLMProviderError):
+    """Error de conexión a provider."""
+    def __init__(self, provider: str, message: str):
+        super().__init__(provider, message, is_retryable=True)
+
+
+class LLMTimeoutError(LLMProviderError):
+    """Error de timeout."""
+    def __init__(self, provider: str, message: str = "Provider timeout"):
+        super().__init__(provider, message, is_retryable=True)
+
 
 class FarmaAuditor:
     """Clase responsable de la recuperación y generación de respuestas."""
-    
+
     def __init__(self, config: FarmaConfig):
         self.config = config
-        # Cambio a embeddings locales usando HuggingFace (MiniLM es ligero y eficiente)
         self.embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
         self.vectorstore = Chroma(
             persist_directory=self.config.chroma_path,
@@ -27,13 +56,8 @@ class FarmaAuditor:
             collection_name=self.config.collection_name
         )
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        reraise=True
-    )
-    def _invoke_chain(self, chain, question: str):
-        """Envuelve la ejecución de la cadena en una lógica de reintentos."""
+    def _invoke_with_timeout(self, chain, question: str):
+        """Invoca el chain con manejo de errores específico por provider."""
         return chain.invoke(question)
 
     def _format_docs(self, docs: List[Document]) -> str:
@@ -48,24 +72,48 @@ class FarmaAuditor:
         """Fábrica de modelos según configuración, resolviendo alias y permitiendo overrides."""
         provider = provider_override or self.config.llm_provider
         model_name = self.config.MODEL_ALIASES.get(self.config.llm_model, self.config.llm_model)
-        
-        # Si hay override a ollama pero el modelo actual es de gemini, forzamos Qwen
+
         if provider == "ollama" and "gemini" in model_name.lower():
             model_name = self.config.MODEL_ALIASES.get("Qwen 2.5", "qwen2.5:0.5b")
-        
+
         if provider == "ollama":
             print(f"[*] Usando modelo local via Ollama: {model_name}")
             return ChatOllama(
                 model=model_name,
-                temperature=self.config.temperature
+                temperature=self.config.temperature,
+                timeout=LLM_TIMEOUT
             )
         else:
             print(f"[*] Usando modelo cloud via Gemini: {model_name}")
             return ChatGoogleGenerativeAI(
                 model=model_name,
                 temperature=self.config.temperature,
-                timeout=20  # Límite de 20 segundos para evitar esperas excesivas
+                timeout=20
             )
+
+    def _classify_error(self, provider: str, error: Exception) -> LLMProviderError:
+        """Clasifica el error según el provider y el tipo de excepción."""
+        error_msg = str(error).lower()
+        error_type = type(error).__name__
+
+        if provider == "gemini":
+            if isinstance(error, RateLimitError):
+                return LLMRateLimitError(provider)
+            if "timeout" in error_msg or isinstance(error, TimeoutError):
+                return LLMTimeoutError(provider, str(error))
+            if "connection" in error_msg or "network" in error_msg or "10061" in error_msg or "10060" in error_msg:
+                return LLMConnectionError(provider, str(error))
+            if "overloaded" in error_msg or "429" in error_msg or "503" in error_msg:
+                return LLMRateLimitError(provider)
+        else:
+            if "timeout" in error_msg or isinstance(error, TimeoutError):
+                return LLMTimeoutError(provider, str(error))
+            if "connection" in error_msg or "network" in error_msg or "10061" in error_msg or "10060" in error_msg:
+                return LLMConnectionError(provider, str(error))
+            if "refused" in error_msg:
+                return LLMConnectionError(provider, "Connection refused - is the service running?")
+
+        return LLMProviderError(provider, str(error), is_retryable=True)
 
     def _load_prompts(self):
         """Carga prompts desde archivo JSON con fallback."""
@@ -79,8 +127,7 @@ class FarmaAuditor:
                     return template.replace("{rules}", rules)
             except Exception as e:
                 print(f"[!] Error cargando prompts.json: {e}")
-        
-        # Fallback si falla la carga o el archivo no existe
+
         return (
             "Eres un auditor de farmacia estricto. Tu tarea es responder consultas sobre normativas "
             "de obras sociales (PAMI, DIM, COFAER, OSER, OSPA VIAL) usando SOLO el contexto provisto.\n\n"
@@ -100,7 +147,7 @@ class FarmaAuditor:
             search_type=self.config.search_type,
             search_kwargs={"k": self.config.top_k}
         )
-        
+
         llm = self._get_llm(provider_override=provider_override)
         system_prompt = self._load_prompts()
 
@@ -108,8 +155,44 @@ class FarmaAuditor:
             ("system", system_prompt),
             ("human", "{question}")
         ])
-        
+
         return (
             {"context": retriever | self._format_docs, "question": RunnablePassthrough()}
             | prompt | llm | StrOutputParser()
         )
+
+    def ask_with_fallback(self, question: str, preferred_provider: str = None) -> Tuple[str, str]:
+        """
+        Ejecuta la consulta con fallback automático entre providers.
+        Retorna: (respuesta, provider_used)
+        Si ambos fallan, levanta la última excepción.
+        """
+        providers_to_try = []
+
+        if preferred_provider:
+            providers_to_try.append(preferred_provider)
+            if preferred_provider == "gemini":
+                providers_to_try.append("ollama")
+            else:
+                providers_to_try.append("gemini")
+        else:
+            providers_to_try = PROVIDER_ORDER.copy()
+
+        last_error = None
+
+        for provider in providers_to_try:
+            try:
+                print(f"[*] Intentando con provider: {provider}")
+                chain = self.setup_chain(provider_override=provider)
+                result = chain.invoke(question)
+                print(f"[*] Consulta exitosa con {provider}")
+                return result, provider
+            except Exception as e:
+                last_error = e
+                classified_error = self._classify_error(provider, e)
+                print(f"[!] Error con {provider}: {classified_error}")
+                if not classified_error.is_retryable:
+                    raise classified_error
+                continue
+
+        raise last_error

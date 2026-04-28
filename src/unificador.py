@@ -26,3 +26,10 @@ class FarmaRAG:
         """Realiza una consulta al auditor con lógica de reintentos y soporte de override."""
         chain = self.auditor.setup_chain(provider_override=provider_override)
         return self.auditor._invoke_chain(chain, question)
+
+    def ask_with_fallback(self, question: str, provider_override: str = None):
+        """
+        Realiza una consulta con fallback automático entre providers.
+        Retorna: (respuesta, provider_used)
+        """
+        return self.auditor.ask_with_fallback(question, provider_override=provider_override)
