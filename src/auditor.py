@@ -2,6 +2,7 @@ import json
 import os
 import time
 from typing import List, Tuple, Optional
+from threading import Lock
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_ollama import ChatOllama
@@ -19,7 +20,6 @@ PROVIDER_ORDER = ["gemini", "ollama"]
 
 
 class LLMProviderError(Exception):
-    """Excepción base para errores de provider LLM."""
     def __init__(self, provider: str, message: str, is_retryable: bool = True):
         self.provider = provider
         self.is_retryable = is_retryable
@@ -27,26 +27,70 @@ class LLMProviderError(Exception):
 
 
 class LLMRateLimitError(LLMProviderError):
-    """Error específico para rate limiting."""
     def __init__(self, provider: str, message: str = "Rate limit exceeded"):
         super().__init__(provider, message, is_retryable=True)
 
 
 class LLMConnectionError(LLMProviderError):
-    """Error de conexión a provider."""
     def __init__(self, provider: str, message: str):
         super().__init__(provider, message, is_retryable=True)
 
 
 class LLMTimeoutError(LLMProviderError):
-    """Error de timeout."""
     def __init__(self, provider: str, message: str = "Provider timeout"):
         super().__init__(provider, message, is_retryable=True)
 
 
-class FarmaAuditor:
-    """Clase responsable de la recuperación y generación de respuestas."""
+class CircuitBreaker:
+    """Circuit breaker para proteger contra fallos en cascada de providers LLM."""
 
+    def __init__(self, failure_threshold: int = 3, recovery_timeout: int = 60):
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self._failures = {}
+        self._lock = Lock()
+
+    def record_failure(self, provider: str):
+        with self._lock:
+            if provider not in self._failures:
+                self._failures[provider] = {"count": 0, "last_failure": 0}
+            self._failures[provider]["count"] += 1
+            self._failures[provider]["last_failure"] = time.time()
+
+    def record_success(self, provider: str):
+        with self._lock:
+            if provider in self._failures:
+                self._failures[provider]["count"] = 0
+
+    def is_open(self, provider: str) -> bool:
+        with self._lock:
+            if provider not in self._failures:
+                return False
+            failure_data = self._failures[provider]
+            if failure_data["count"] >= self.failure_threshold:
+                if time.time() - failure_data["last_failure"] < self.recovery_timeout:
+                    return True
+                else:
+                    failure_data["count"] = 0
+                    return False
+            return False
+
+    def get_status(self) -> dict:
+        with self._lock:
+            return {
+                provider: {
+                    "failures": data["count"],
+                    "open": data["count"] >= self.failure_threshold,
+                    "last_failure": data["last_failure"]
+                }
+                for provider, data in self._failures.items()
+            }
+
+
+CIRCUIT_BREAKER = CircuitBreaker(failure_threshold=3, recovery_timeout=60)
+
+
+class FarmaAuditor:
     def __init__(self, config: FarmaConfig):
         self.config = config
         self.embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
@@ -57,7 +101,6 @@ class FarmaAuditor:
         )
 
     def _invoke_with_timeout(self, chain, question: str):
-        """Invoca el chain con manejo de errores específico por provider."""
         return chain.invoke(question)
 
     def _format_docs(self, docs: List[Document]) -> str:
@@ -69,7 +112,6 @@ class FarmaAuditor:
         return "\n\n".join(formatted)
 
     def _get_llm(self, provider_override: str = None):
-        """Fábrica de modelos según configuración, resolviendo alias y permitiendo overrides."""
         provider = provider_override or self.config.llm_provider
         model_name = self.config.MODEL_ALIASES.get(self.config.llm_model, self.config.llm_model)
 
@@ -92,7 +134,6 @@ class FarmaAuditor:
             )
 
     def _classify_error(self, provider: str, error: Exception) -> LLMProviderError:
-        """Clasifica el error según el provider y el tipo de excepción."""
         error_msg = str(error).lower()
         error_type = type(error).__name__
 
@@ -116,7 +157,6 @@ class FarmaAuditor:
         return LLMProviderError(provider, str(error), is_retryable=True)
 
     def _load_prompts(self):
-        """Carga prompts desde archivo JSON con fallback."""
         file_path = "src/prompts.json"
         if os.path.exists(file_path):
             try:
@@ -142,7 +182,6 @@ class FarmaAuditor:
         )
 
     def setup_chain(self, provider_override: str = None):
-        """Configura la cadena LCEL con soporte para override de proveedor."""
         retriever = self.vectorstore.as_retriever(
             search_type=self.config.search_type,
             search_kwargs={"k": self.config.top_k}
@@ -162,11 +201,6 @@ class FarmaAuditor:
         )
 
     def ask_with_fallback(self, question: str, preferred_provider: str = None) -> Tuple[str, str]:
-        """
-        Ejecuta la consulta con fallback automático entre providers.
-        Retorna: (respuesta, provider_used)
-        Si ambos fallan, levanta la última excepción.
-        """
         providers_to_try = []
 
         if preferred_provider:
@@ -181,16 +215,27 @@ class FarmaAuditor:
         last_error = None
 
         for provider in providers_to_try:
+            if CIRCUIT_BREAKER.is_open(provider):
+                print(f"[*] Circuit breaker abierto para {provider}, saltando...")
+                continue
+
             try:
                 print(f"[*] Intentando con provider: {provider}")
                 chain = self.setup_chain(provider_override=provider)
                 result = chain.invoke(question)
                 print(f"[*] Consulta exitosa con {provider}")
+                CIRCUIT_BREAKER.record_success(provider)
                 return result, provider
             except Exception as e:
                 last_error = e
                 classified_error = self._classify_error(provider, e)
                 print(f"[!] Error con {provider}: {classified_error}")
+
+                if CIRCUIT_BREAKER.is_open(provider):
+                    print(f"[*] Circuit breaker abierto para {provider} tras múltiples fallos")
+                else:
+                    CIRCUIT_BREAKER.record_failure(provider)
+
                 if not classified_error.is_retryable:
                     raise classified_error
                 continue

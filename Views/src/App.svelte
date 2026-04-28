@@ -24,6 +24,11 @@
   let messagesEndRef = $state<HTMLDivElement | null>(null);
   let lastConfigChange = 0;
   const CONFIG_CHANGE_COOLDOWN = 500;
+  let modelAliases = $state<Record<string, string>>({});
+
+  let friendlyModelName = $derived(
+    Object.keys(modelAliases).find(k => modelAliases[k] === model) || model
+  );
 
   onMount(async () => {
     const fetchConfig = async () => {
@@ -32,14 +37,30 @@
         if (response.ok) {
           const data = await response.json();
           isOnline = data.engine_loaded;
-          if (data.current_model) model = data.current_model;
+          if (data.current_model) {
+            model = data.current_model;
+          }
           if (data.current_provider) provider = data.current_provider;
         }
       } catch (err) {
         console.error("Error conectando con el backend:", err);
       }
     };
+
+    const fetchAliases = async () => {
+      try {
+        const response = await fetch('http://localhost:8000/aliases');
+        if (response.ok) {
+          const data = await response.json();
+          modelAliases = data.friendly_to_technical || {};
+        }
+      } catch (err) {
+        console.error("Error fetching aliases:", err);
+      }
+    };
+
     await fetchConfig();
+    await fetchAliases();
   });
 
   async function handleSend(overrideInput?: string) {
@@ -70,7 +91,7 @@
 
       if (data.fallback_triggered) {
         toasts.show(
-          `Fallback: usando modelo ${data.provider_used === 'ollama' ? 'local (Qwen)' : 'cloud (Gemini)'}`,
+          `Fallback: usando modelo ${data.provider_used === 'ollama' ? 'Qwen 2.5' : 'Gemini 3.1'}`,
           'warning'
         );
       }
@@ -113,7 +134,7 @@
       if (!response.ok) throw new Error("Error guardando config");
 
       if (reallyChanged) {
-        toasts.show(`Configuración guardada: ${newProvider} (${newModel})`, 'success');
+        toasts.show(`Configuración guardada: ${newProvider} (${friendlyModelName})`, 'success');
       }
 
     } catch (err: any) {
@@ -147,7 +168,7 @@
         <div class="hidden md:flex items-center gap-6 px-4 py-2 bg-slate-50 rounded-2xl border border-slate-100">
           <div class="flex flex-col">
             <span class="text-[8px] font-black text-slate-400 uppercase tracking-tighter">Modelo</span>
-            <span class="text-xs font-bold text-slate-600">{model}</span>
+            <span class="text-xs font-bold text-slate-600">{friendlyModelName}</span>
           </div>
           <div class="w-px h-6 bg-slate-200"></div>
           <div class="flex flex-col">
@@ -215,7 +236,9 @@
     bind:open={isSidebarOpen}
     {provider}
     {model}
+    {friendlyModelName}
     onConfigChange={handleConfigChange}
     {isSavingConfig}
+    {modelAliases}
   />
 </div>
