@@ -6,21 +6,31 @@
     open: boolean;
     provider: string;
     model: string;
+    friendlyModelName: string;
     onConfigChange: (provider: string, model: string) => void;
     isSavingConfig: boolean;
+    modelAliases?: Record<string, string>;
   }
 
   let {
     open = $bindable(false),
     provider,
     model,
+    friendlyModelName,
     onConfigChange,
-    isSavingConfig
+    isSavingConfig,
+    modelAliases = {}
   }: Props = $props();
 
   function handleProviderSelect(p: string) {
     const defaultModel = p === 'ollama' ? 'qwen2.5:0.5b' : 'models/gemini-3.1-flash-lite-preview';
     onConfigChange(p, defaultModel);
+  }
+
+  function handleModelChange(e: Event) {
+    const input = (e.currentTarget as HTMLInputElement).value;
+    const technical = modelAliases[input] || input;
+    onConfigChange(provider, technical);
   }
 </script>
 
@@ -87,11 +97,14 @@
         <div class="relative">
           <input
             type="text"
-            value={model}
-            onchange={(e) => onConfigChange(provider, e.currentTarget.value)}
+            value={friendlyModelName}
+            onchange={handleModelChange}
             class="w-full p-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-medium text-slate-700 focus:border-teal-500 focus:bg-white transition-all outline-none"
             placeholder="Nombre del modelo..."
           />
+          <p class="text-[10px] text-teal-600 mt-1 font-medium">
+            Técnico: {model}
+          </p>
         </div>
         <p class="text-[10px] text-slate-400 leading-relaxed italic">
           Asegúrate de que el modelo esté disponible en tu proveedor seleccionado.

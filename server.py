@@ -1,8 +1,17 @@
 import os
-from fastapi import FastAPI, HTTPException
+import re
+import uuid
+import json
+import time
+from datetime import datetime
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional, List
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from src.unificador import FarmaRAG
 from src.config import FarmaConfig
 from src.auditor import (
@@ -12,7 +21,9 @@ from src.auditor import (
     LLMTimeoutError
 )
 
+limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="FarmaRAG API", description="Servidor para la interfaz gráfica del Auditor de Farmacia")
+app.state.limiter = limiter
 
 app.add_middleware(
     CORSMiddleware,
@@ -21,6 +32,48 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+LOGS_DIR = "logs"
+DEAD_LETTER_FILE = os.path.join(LOGS_DIR, "failed_queries.jsonl")
+
+def ensure_logs_dir():
+    if not os.path.exists(LOGS_DIR):
+        os.makedirs(LOGS_DIR)
+
+def sanitize_input(text: str) -> str:
+    """Sanitiza input del usuario para prevenir prompt injection."""
+    if not text:
+        return ""
+    text = text.strip()
+    text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
+    text = re.sub(r'<script[^>]*>.*?</script>', '', text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r'javascript:', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'on\w+\s*=', '', text, flags=re.IGNORECASE)
+    return text[:1000]
+
+def structured_log(level: str, event: str, request_id: str, **kwargs):
+    """Loguea en formato JSON estructurado."""
+    log_entry = {
+        "timestamp": datetime.utcnow().isoformat(),
+        "level": level,
+        "event": event,
+        "request_id": request_id,
+        **kwargs
+    }
+    print(json.dumps(log_entry))
+
+def log_dead_letter(request_id: str, question: str, error: str, provider: str = None):
+    """Registra queries fallidas en dead letter log."""
+    ensure_logs_dir()
+    entry = {
+        "timestamp": datetime.utcnow().isoformat(),
+        "request_id": request_id,
+        "question": question,
+        "error": error,
+        "provider": provider
+    }
+    with open(DEAD_LETTER_FILE, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry) + "\n")
 
 print("[*] Iniciando motor FarmaRAG...")
 try:
@@ -67,6 +120,51 @@ def read_root():
     }
 
 
+@app.get("/health")
+def deep_health_check():
+    """Deep health check endpoint."""
+    health = {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "engine_loaded": rag is not None,
+        "components": {}
+    }
+
+    try:
+        if rag:
+            health["components"]["config"] = {
+                "llm_provider": rag.config.llm_provider,
+                "llm_model": rag.config.llm_model,
+                "friendly_name": rag.config.get_friendly_name()
+            }
+            health["components"]["vectorstore"] = {
+                "path": rag.config.chroma_path,
+                "collection": rag.config.collection_name
+            }
+        else:
+            health["components"]["config"] = "not_loaded"
+    except Exception as e:
+        health["components"]["config"] = f"error: {str(e)}"
+
+    try:
+        ensure_logs_dir()
+        health["components"]["logging"] = "ok"
+    except Exception as e:
+        health["components"]["logging"] = f"error: {str(e)}"
+
+    return health
+
+
+@app.get("/aliases")
+def get_model_aliases():
+    """Retorna mapeo de nombres amigables a IDs técnicos."""
+    if not rag:
+        raise HTTPException(status_code=503, detail="Motor RAG no disponible")
+    return {
+        "friendly_to_technical": rag.config.MODEL_ALIASES
+    }
+
+
 @app.post("/config")
 def update_config(request: ConfigRequest):
     global rag
@@ -84,25 +182,38 @@ def update_config(request: ConfigRequest):
 
 
 @app.post("/ask", response_model=QueryResponse)
-async def ask_auditor(request: QueryRequest):
+@limiter.limit("10/minute")
+async def ask_auditor(request: Request, body: QueryRequest):
     global last_fallback_event
+    request_id = str(uuid.uuid4())
 
     if not rag:
+        structured_log("ERROR", "engine_not_loaded", request_id)
         raise HTTPException(status_code=503, detail="Motor RAG no disponible")
 
-    if not request.question.strip():
+    question = sanitize_input(body.question)
+    if not question:
+        structured_log("WARNING", "empty_question", request_id)
         raise HTTPException(status_code=400, detail="La pregunta no puede estar vacía")
 
+    if len(question) < 3:
+        raise HTTPException(status_code=400, detail="La pregunta debe tener al menos 3 caracteres")
+
     try:
-        print(f"[*] Procesando consulta ({request.provider or 'default'}): {request.question}")
+        structured_log("INFO", "query_start", request_id, question_length=len(question))
+        start_time = time.time()
+
         respuesta, provider_used = rag.ask_with_fallback(
-            request.question,
-            provider_override=request.provider
+            question,
+            provider_override=body.provider
         )
+
+        duration = time.time() - start_time
+        structured_log("INFO", "query_success", request_id, provider=provider_used, duration_ms=round(duration*1000, 2))
 
         last_fallback_event = {
             "provider_used": provider_used,
-            "fallback_triggered": request.provider is not None or provider_used != (request.provider or rag.config.llm_provider)
+            "fallback_triggered": body.provider is not None or provider_used != (body.provider or rag.config.llm_provider)
         }
 
         return QueryResponse(
@@ -112,23 +223,31 @@ async def ask_auditor(request: QueryRequest):
         )
 
     except LLMRateLimitError as e:
-        print(f"[!] Rate limit error: {e}")
+        duration = time.time() - start_time
+        structured_log("ERROR", "rate_limit", request_id, provider=body.provider or rag.config.llm_provider)
+        log_dead_letter(request_id, question, str(e), body.provider)
         raise HTTPException(status_code=503, detail="model_overloaded")
 
     except LLMTimeoutError as e:
-        print(f"[!] Timeout error: {e}")
+        duration = time.time() - start_time
+        structured_log("ERROR", "timeout", request_id, provider=body.provider or rag.config.llm_provider, duration_ms=round(duration*1000, 2))
+        log_dead_letter(request_id, question, str(e), body.provider)
         raise HTTPException(status_code=503, detail="timeout")
 
     except LLMConnectionError as e:
-        print(f"[!] Connection error: {e}")
+        duration = time.time() - start_time
+        structured_log("ERROR", "connection_error", request_id, provider=body.provider or rag.config.llm_provider)
+        log_dead_letter(request_id, question, str(e), body.provider)
         raise HTTPException(status_code=503, detail="connection_error")
 
     except LLMProviderError as e:
-        print(f"[!] Provider error: {e}")
+        structured_log("ERROR", "provider_error", request_id, error=str(e))
+        log_dead_letter(request_id, question, str(e), body.provider)
         raise HTTPException(status_code=500, detail=str(e))
 
     except Exception as e:
-        print(f"[!] Error procesando consulta: {e}")
+        structured_log("ERROR", "unknown_error", request_id, error=str(e))
+        log_dead_letter(request_id, question, str(e), body.provider)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -136,6 +255,14 @@ async def ask_auditor(request: QueryRequest):
 def get_fallback_status():
     """Retorna el estado del último fallback para el frontend."""
     return last_fallback_event
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={"error": "rate_limit_exceeded", "code": "rate_limit", "fallback_triggered": False}
+    )
 
 
 if __name__ == "__main__":
