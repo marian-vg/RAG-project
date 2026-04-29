@@ -3,8 +3,8 @@ Fallback flow integration test.
 Tests automatic fallback when primary provider fails.
 """
 import pytest
-from tests.test_data import TEST_QUERIES
-from tests.results_logger import ResultsLogger
+from tests.datos_test import TEST_QUERIES
+from tests.registro_resultados import ResultsLogger
 
 
 class TestFallbackFlow:

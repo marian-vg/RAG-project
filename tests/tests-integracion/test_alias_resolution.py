@@ -4,7 +4,7 @@ Tests that friendly names resolve correctly to technical IDs.
 """
 import pytest
 from src.config import FarmaConfig
-from tests.results_logger import ResultsLogger
+from tests.registro_resultados import ResultsLogger
 
 
 class TestAliasResolution:

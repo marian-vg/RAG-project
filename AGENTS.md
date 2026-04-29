@@ -146,10 +146,10 @@ sdd-init/{project}          → Project initialization context
 | Capability | Status |
 |------------|--------|
 | Test Runner | ✅ pytest |
-| Unit Tests | ✅ `tests/unit-tests/` |
-| Integration Tests | ✅ `tests/integration-tests/` |
-| Config Tests | ✅ `tests/config-tests/` |
-| Scripts Tests | ✅ `tests/scripts-tests/` |
+| Unit Tests | ✅ `tests/tests-unitarios/` |
+| Integration Tests | ✅ `tests/tests-integracion/` |
+| Config Tests | ✅ `tests/tests-configuracion/` |
+| Scripts Tests | ✅ `tests/tests-scripts/` |
 | Linter | ✅ ESLint 9.x (`npm run lint`) |
 | Type Checker | ✅ TypeScript (`tsc --noEmit`) |
 
@@ -212,13 +212,13 @@ sdd-init/{project}          → Project initialization context
 │   └── RESUME.md
 ├── logs/                   # Runtime logs + dead letter
 ├── tests/                  # Test suite
-│   ├── conftest.py         # Pytest fixtures
-│   ├── test_data.py        # FAQ queries + synthetic queries
-│   ├── results_logger.py   # JSON audit logger
-│   ├── config-tests/       # Parameter variation tests
-│   ├── integration-tests/  # Flow tests
-│   ├── unit-tests/         # Isolated component tests
-│   └── scripts-tests/      # Scripts validation tests
+│   ├── conftest.py              # Pytest fixtures discovery
+│   ├── datos_test.py           # FAQ queries + synthetic queries
+│   ├── registro_resultados.py   # JSON audit logger
+│   ├── tests-configuracion/     # Parameter variation tests
+│   ├── tests-integracion/       # Flow tests
+│   ├── tests-unitarios/         # Isolated component tests
+│   └── tests-scripts/           # Scripts validation tests
 ├── .agents/               # Agent skills (OpenSpec format)
 ├── .atl/                  # Agent Teams Lite config
 └── .env                   # Environment variables
