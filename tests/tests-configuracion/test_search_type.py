@@ -4,8 +4,8 @@ Tests similarity vs mmr (maximal marginal relevance) search strategies.
 """
 import pytest
 from src.config import FarmaConfig
-from tests.conftest import PARAM_TEST_MATRICES
-from tests.results_logger import ResultsLogger
+from tests.test_configuracion import PARAM_TEST_MATRICES
+from tests.registro_resultados import ResultsLogger
 
 
 class TestSearchType:

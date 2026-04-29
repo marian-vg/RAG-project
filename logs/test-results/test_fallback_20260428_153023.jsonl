@@ -1,0 +1,1 @@
+{"timestamp": "2026-04-28T18:30:23.004814", "test_name": "test_fallback", "params": {"preferred_provider": "gemini", "query_id": "faq_pami"}, "result": {"provider_used": "gemini", "answer_length": 114}}

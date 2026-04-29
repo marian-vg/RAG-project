@@ -3,8 +3,8 @@ Full query flow integration test.
 Tests the complete flow: question -> retrieval -> generation -> response.
 """
 import pytest
-from tests.test_data import TEST_QUERIES
-from tests.results_logger import ResultsLogger
+from tests.datos_test import TEST_QUERIES
+from tests.registro_resultados import ResultsLogger
 
 
 class TestFullQueryFlow:
