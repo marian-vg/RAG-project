@@ -135,24 +135,15 @@ class FarmaAuditor:
 
     def _classify_error(self, provider: str, error: Exception) -> LLMProviderError:
         error_msg = str(error).lower()
-        error_type = type(error).__name__
 
-        if provider == "gemini":
-            if isinstance(error, RateLimitError):
-                return LLMRateLimitError(provider)
-            if "timeout" in error_msg or isinstance(error, TimeoutError):
-                return LLMTimeoutError(provider, str(error))
-            if "connection" in error_msg or "network" in error_msg or "10061" in error_msg or "10060" in error_msg:
-                return LLMConnectionError(provider, str(error))
-            if "overloaded" in error_msg or "429" in error_msg or "503" in error_msg:
-                return LLMRateLimitError(provider)
-        else:
-            if "timeout" in error_msg or isinstance(error, TimeoutError):
-                return LLMTimeoutError(provider, str(error))
-            if "connection" in error_msg or "network" in error_msg or "10061" in error_msg or "10060" in error_msg:
-                return LLMConnectionError(provider, str(error))
-            if "refused" in error_msg:
-                return LLMConnectionError(provider, "Connection refused - is the service running?")
+        if "rate limit" in error_msg or "429" in error_msg or "overloaded" in error_msg or "too many requests" in error_msg:
+            return LLMRateLimitError(provider)
+        if "timeout" in error_msg or isinstance(error, TimeoutError):
+            return LLMTimeoutError(provider, str(error))
+        if "connection" in error_msg or "network" in error_msg or "10061" in error_msg or "10060" in error_msg:
+            return LLMConnectionError(provider, str(error))
+        if "refused" in error_msg:
+            return LLMConnectionError(provider, "Connection refused - is the service running?")
 
         return LLMProviderError(provider, str(error), is_retryable=True)
 

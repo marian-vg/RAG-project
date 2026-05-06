@@ -13,12 +13,24 @@
 
 ```
 Frontend (Svelte:5173) → FastAPI (server.py:8000) → FarmaRAG (unificador.py)
-                                                          ↓
-                                                   FarmaAuditor (auditor.py)
-                                                          ↓
-                                       Chroma DB ← HuggingFaceEmbeddings
-                                                          ↓
-                                       LLM: Ollama (local) / Gemini (cloud)
+                                                           ↓
+                                                    FarmaAuditor (auditor.py)
+                                                           ↓
+                                        Chroma DB ← HuggingFaceEmbeddings
+                                                           ↓
+                                        LLM: Ollama (local) / Gemini (cloud)
+```
+
+### Rasa CALM Orchestrator (Microservices)
+
+```
+Rasa CALM (port 5005) ←→ A2A Protocol ←→ FarmaRAG (port 8000)
+       ↓
+  User Chat Interface
+       ↓
+  Flows: saludo, ayuda, consulta_auditoria, fuera_tema
+       ↓
+  consulta_auditoria → action_call_farmarag → FarmaRAG /ask → RAG response
 ```
 
 ---
@@ -221,5 +233,21 @@ sdd-init/{project}          → Project initialization context
 │   └── tests-scripts/           # Scripts validation tests
 ├── .agents/               # Agent skills (OpenSpec format)
 ├── .atl/                  # Agent Teams Lite config
-└── .env                   # Environment variables
+├── .env                   # Environment variables
+└── farmarag-rasa/         # Rasa CALM orchestrator (sibling directory)
+    ├── actions/
+    │   └── actions.py     # ActionCallFarmaRAG class
+    ├── data/
+    │   ├── nlu.yml        # Training data (4 intents)
+    │   ├── rules.yml       # Conversation rules
+    │   └── stories.yml     # Story fragments
+    ├── models/             # Trained Rasa model
+    ├── tests/
+    │   └── test_rasa_integration.py
+    ├── config.yml          # LLM pipeline (Ollama/Qwen2.5)
+    ├── credentials.yml     # A2A sub-agent config
+    ├── domain.yml          # Intents, actions, responses, flows
+    ├── endpoints.yml       # Action server + A2A endpoints
+    └── docs/
+        └── A2A_INTEGRATION.md
 ```

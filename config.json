@@ -1,0 +1,19 @@
+{
+    "docs_dir": "documentos",
+    "chroma_path": "chroma_db",
+    "collection_name": "farmarag_collection",
+    "chunk_size": 800,
+    "chunk_overlap": 150,
+    "embedding_model": "models/gemini-embedding-001",
+    "llm_provider": "gemini",
+    "llm_model": "models/gemini-3.1-flash-lite-preview",
+    "generation_model": "models/gemini-3.1-flash-lite-preview",
+    "temperature": 0.0,
+    "top_k": 4,
+    "prompt": "",
+    "search_type": "similarity",
+    "MODEL_ALIASES": {
+        "Qwen 2.5": "qwen2.5:0.5b",
+        "Gemini 3.1": "models/gemini-3.1-flash-lite-preview"
+    }
+}

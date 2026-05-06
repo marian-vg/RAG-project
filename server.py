@@ -205,7 +205,7 @@ async def ask_auditor(request: Request, body: QueryRequest):
 
         respuesta, provider_used = rag.ask_with_fallback(
             question,
-            provider_override=body.provider
+            preferred_provider=body.provider
         )
 
         duration = time.time() - start_time
