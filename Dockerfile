@@ -1,6 +1,4 @@
-# FarmaRAG Docker
-
-FROM python:3.11-slim
+FROM python:3.10-slim
 
 WORKDIR /app
 
