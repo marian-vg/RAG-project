@@ -13,7 +13,6 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_chroma import Chroma
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_community.vectorstores.utils import filter_complex_metadata
 from langchain_core.documents import Document
 
 from src.config import FarmaConfig
@@ -138,8 +137,6 @@ class FarmaProcessor:
 
         if not all_chunks: return
 
-        all_chunks = filter_complex_metadata(all_chunks)
-        
         if clean_first and os.path.exists(self.config.chroma_path):
             print(f"[*] Limpiando base de datos en {self.config.chroma_path}...")
             shutil.rmtree(self.config.chroma_path)

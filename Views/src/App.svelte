@@ -35,7 +35,7 @@
         const response = await fetch('http://localhost:8000/');
         if (response.ok) {
           const data = await response.json();
-          isOnline = data.engine_loaded;
+
           if (data.current_model) {
             model = data.current_model;
           }
