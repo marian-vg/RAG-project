@@ -20,7 +20,6 @@
   let provider = $state('ollama');
   let model = $state('qwen2.5:0.5b');
   let isSavingConfig = $state(false);
-  let isOnline = $state(false);
   let messagesEndRef = $state<HTMLDivElement | null>(null);
   let lastConfigChange = 0;
   const CONFIG_CHANGE_COOLDOWN = 500;
@@ -69,9 +68,7 @@
 
     if (!overrideInput) input = '';
 
-    if (overrideInput) {
-      messages = [...messages, { role: 'user', content: textToSend }];
-    }
+    messages = [...messages, { role: 'user', content: textToSend }];
 
     isLoading = true;
 
@@ -91,7 +88,7 @@
 
       if (data.fallback_triggered) {
         toasts.show(
-          `Fallback: usando modelo ${data.provider_used === 'ollama' ? 'Qwen 2.5' : 'Gemini 3.1'}`,
+          `Fallback: usando modelo ${data.provider_used === 'ollama' ? 'Qwen 2.5' : 'Gemini 2.5'}`,
           'warning'
         );
       }

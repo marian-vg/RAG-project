@@ -2,18 +2,20 @@
     "docs_dir": "documentos",
     "chroma_path": "chroma_db",
     "collection_name": "farmarag_collection",
-    "chunk_size": 800,
-    "chunk_overlap": 150,
-    "embedding_model": "models/gemini-embedding-001",
-    "llm_provider": "gemini",
-    "llm_model": "models/gemini-3.1-flash-lite-preview",
-    "generation_model": "models/gemini-3.1-flash-lite-preview",
+    "chunk_size": 400,
+    "chunk_overlap": 120,
+    "embedding_model": "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
+    "llm_provider": "ollama",
+    "llm_model": "qwen2.5:0.5b",
+    "generation_model": "models/gemini-2.5-flash",
     "temperature": 0.0,
-    "top_k": 4,
+    "top_k": 6,
     "prompt": "",
     "search_type": "similarity",
+    "score_threshold": 0.5,
+    "filter_by_entity": true,
     "MODEL_ALIASES": {
         "Qwen 2.5": "qwen2.5:0.5b",
-        "Gemini 3.1": "models/gemini-3.1-flash-lite-preview"
+        "Gemini 2.5": "gemini-2.5-flash"
     }
 }

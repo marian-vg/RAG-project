@@ -93,11 +93,15 @@ CIRCUIT_BREAKER = CircuitBreaker(failure_threshold=3, recovery_timeout=60)
 class FarmaAuditor:
     def __init__(self, config: FarmaConfig):
         self.config = config
-        self.embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        self.embeddings = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
+            encode_kwargs={"normalize_embeddings": True}
+        )
         self.vectorstore = Chroma(
             persist_directory=self.config.chroma_path,
             embedding_function=self.embeddings,
-            collection_name=self.config.collection_name
+            collection_name=self.config.collection_name,
+            collection_metadata={"hnsw:space": "cosine"}
         )
 
     def _invoke_with_timeout(self, chain, question: str):
@@ -106,10 +110,21 @@ class FarmaAuditor:
     def _format_docs(self, docs: List[Document]) -> str:
         formatted = []
         for doc in docs:
+            content = doc.page_content.strip()
+            if not content:
+                continue
             source = doc.metadata.get("source", "Desconocido")
             entidad = doc.metadata.get("entidad", "Desconocida")
-            formatted.append(f"--- DOC: {source} ({entidad}) ---\n{doc.page_content}")
+            formatted.append(f"--- DOC: {source} ({entidad}) ---\n{content}")
         return "\n\n".join(formatted)
+
+    def _detect_entity_from_query(self, question: str) -> Optional[str]:
+        question_upper = question.upper()
+        entities = ["OSER", "PAMI", "DIM", "COFAER", "OSPA VIAL"]
+        for ent in entities:
+            if ent in question_upper:
+                return ent
+        return None
 
     def _get_llm(self, provider_override: str = None):
         provider = provider_override or self.config.llm_provider
@@ -172,10 +187,18 @@ class FarmaAuditor:
             "</contexto>"
         )
 
-    def setup_chain(self, provider_override: str = None):
+    def setup_chain(self, provider_override: str = None, entity_filter: str = None):
+        search_kwargs = {
+            "k": self.config.top_k,
+            "score_threshold": self.config.score_threshold
+        }
+
+        if self.config.filter_by_entity and entity_filter:
+            search_kwargs["filter"] = {"entidad": entity_filter}
+
         retriever = self.vectorstore.as_retriever(
-            search_type=self.config.search_type,
-            search_kwargs={"k": self.config.top_k}
+            search_type="similarity_score_threshold",
+            search_kwargs=search_kwargs
         )
 
         llm = self._get_llm(provider_override=provider_override)
@@ -203,6 +226,8 @@ class FarmaAuditor:
         else:
             providers_to_try = PROVIDER_ORDER.copy()
 
+        detected_entity = self._detect_entity_from_query(question) if self.config.filter_by_entity else None
+
         last_error = None
 
         for provider in providers_to_try:
@@ -212,10 +237,16 @@ class FarmaAuditor:
 
             try:
                 print(f"[*] Intentando con provider: {provider}")
-                chain = self.setup_chain(provider_override=provider)
+                chain = self.setup_chain(provider_override=provider, entity_filter=detected_entity)
                 result = chain.invoke(question)
                 print(f"[*] Consulta exitosa con {provider}")
                 CIRCUIT_BREAKER.record_success(provider)
+
+                if "[ENTIDAD_NO_COINCIDE]" in result:
+                    return "Puedes ser mas especifico?", provider
+                if "[INFO_NO_DISPONIBLE]" in result:
+                    return "No hay informacion suficiente en los documentos cargados.", provider
+
                 return result, provider
             except Exception as e:
                 last_error = e

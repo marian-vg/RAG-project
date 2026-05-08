@@ -25,6 +25,11 @@ wheels/
 .installed.cfg
 *.egg
 
+# Agents
+.atl
+.agents
+.claude
+
 # Virtual environments
 venv/
 ENV/

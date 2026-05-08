@@ -14,6 +14,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_chroma import Chroma
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_community.vectorstores.utils import filter_complex_metadata
+from langchain_core.documents import Document
 
 from src.config import FarmaConfig
 
@@ -40,8 +41,9 @@ class FarmaProcessor:
         """Limpieza profunda para reducir ruido en modelos pequeños."""
         text = re.sub(r'\n{3,}', '\n\n', text)
         text = re.sub(r' +', ' ', text)
-        # Eliminar secuencias largas de caracteres especiales (ruido de OCR/formato)
         text = re.sub(r'[-_=*]{4,}', '', text)
+        text = re.sub(r'^(OSER:|COFAER:|DIM:|PAMI:|RECETAS OFICIALES EXTRAVIADAS|CIRCULAR|NOTA):\s*$', '', text, flags=re.MULTILINE)
+        text = re.sub(r'^\s*\(.*\)\s*$', '', text)
         return text.strip()
 
     def _extract_entity_from_filename(self, filename: str) -> Optional[str]:
@@ -52,6 +54,15 @@ class FarmaProcessor:
             if ent in filename_upper:
                 return ent
         return None
+
+    def _is_valid_chunk(self, chunk: Document) -> bool:
+        """Filtra chunks vacíos o que son solo headers sin contenido real."""
+        content = chunk.page_content.strip()
+        if not content:
+            return False
+        if len(content) < 20:
+            return False
+        return True
 
     def _detect_entity(self, text: str, filename: str) -> str:
         # 1. Intentar por nombre de archivo
@@ -117,7 +128,10 @@ class FarmaProcessor:
                     })
                 
                 chunks = self.text_splitter.split_documents(elements)
-                all_chunks.extend(chunks)
+                valid_chunks = [c for c in chunks if self._is_valid_chunk(c)]
+                all_chunks.extend(valid_chunks)
+                if len(chunks) != len(valid_chunks):
+                    print(f"    [~] Filtrados {len(chunks) - len(valid_chunks)} chunks invalidos")
                 
             except Exception as e:
                 print(f"  [!] Error en {filename}: {e}")
@@ -130,18 +144,22 @@ class FarmaProcessor:
             print(f"[*] Limpiando base de datos en {self.config.chroma_path}...")
             shutil.rmtree(self.config.chroma_path)
 
-        # Vectorización local
+# Vectorización local
         print(f"[*] Vectorizando {len(all_chunks)} fragmentos localmente...")
-        embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-        
+        embeddings = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
+            encode_kwargs={"normalize_embeddings": True}
+        )
+
         vectorstore = Chroma(
             persist_directory=self.config.chroma_path,
             embedding_function=embeddings,
-            collection_name=self.config.collection_name
+            collection_name=self.config.collection_name,
+            collection_metadata={"hnsw:space": "cosine"}
         )
-        
+
         # Al ser local, no necesitamos batching con sleeps largos
-        batch_size = 100 
+        batch_size = 100
         for i in range(0, len(all_chunks), batch_size):
             batch = all_chunks[i : i + batch_size]
             print(f"  [+] Indexando lote {(i//batch_size)+1}/{(len(all_chunks)//batch_size)+1}")
@@ -150,5 +168,5 @@ class FarmaProcessor:
             except Exception as e:
                 print(f"  [!] Error indexando lote: {e}")
                 raise e
-        
+
         print("[*] Ingesta completada.")

@@ -39,7 +39,7 @@ class TestFarmaConfig:
     def test_get_technical_name(self):
         config = FarmaConfig()
         assert config.get_technical_name("Qwen 2.5") == "qwen2.5:0.5b"
-        assert config.get_technical_name("Gemini 3.1") == "models/gemini-3.1-flash-lite-preview"
+        assert config.get_technical_name("Gemini 2.5") == "models/gemini-2.5-flash"
 
     def test_get_technical_name_unknown(self):
         config = FarmaConfig()

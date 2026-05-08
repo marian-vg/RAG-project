@@ -31,13 +31,7 @@
     }
   ];
 
-  function getIconComponent(icon: 'file' | 'alert' | 'help') {
-    switch (icon) {
-      case 'file': return FileText;
-      case 'alert': return AlertTriangle;
-      case 'help': return HelpCircle;
-    }
-  }
+  
 </script>
 
 <div class="grid grid-cols-1 md:grid-cols-3 gap-4 w-full max-w-4xl mx-auto mt-8">

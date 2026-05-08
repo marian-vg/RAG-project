@@ -7,20 +7,22 @@ class FarmaConfig(BaseModel):
     docs_dir: str = "documentos"
     chroma_path: str = "chroma_db"
     collection_name: str = "farmarag_collection"
-    chunk_size: int = 800
-    chunk_overlap: int = 150
-    embedding_model: str = "models/gemini-embedding-001"
+    chunk_size: int = 400
+    chunk_overlap: int = 120
+    embedding_model: str = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
     llm_provider: str = "ollama"
     llm_model: str = "Qwen 2.5"
-    generation_model: str = "models/gemini-3.1-flash-lite-preview"
+    generation_model: str = "models/gemini-2.5-flash"
     temperature: float = 0.0
-    top_k: int = 4
+    top_k: int = 6
     prompt: str = ""
     search_type: str = "similarity"
+    score_threshold: float = 0.50
+    filter_by_entity: bool = False
 
     MODEL_ALIASES: dict = {
         "Qwen 2.5": "qwen2.5:0.5b",
-        "Gemini 3.1": "models/gemini-3.1-flash-lite-preview",
+        "Gemini 2.5": "gemini-2.5-flash",
     }
 
     @property

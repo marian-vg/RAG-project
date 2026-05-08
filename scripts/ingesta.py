@@ -1,11 +1,7 @@
 from src.unificador import FarmaRAG, FarmaConfig
 
 def ejecutar_ingesta():
-    config = FarmaConfig(
-        chunk_size=800,
-        chunk_overlap=150,
-        
-    )
+    config = FarmaConfig.load("config.json")
     
     rag = FarmaRAG(config)
     

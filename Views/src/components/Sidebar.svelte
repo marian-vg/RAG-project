@@ -23,7 +23,7 @@
   }: Props = $props();
 
   function handleProviderSelect(p: string) {
-    const defaultModel = p === 'ollama' ? 'qwen2.5:0.5b' : 'models/gemini-3.1-flash-lite-preview';
+    const defaultModel = p === 'ollama' ? 'qwen2.5:0.5b' : 'models/gemini-2.5-flash';
     onConfigChange(p, defaultModel);
   }
 
